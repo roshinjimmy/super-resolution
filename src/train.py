@@ -162,9 +162,10 @@ class Trainer:
             
             # Calculate train metrics (no grad needed)
             with torch.no_grad():
-                for i in range(sr.size(0)):
-                    total_psnr += calculate_psnr(sr[i], hr[i])
-                    total_ssim += calculate_ssim(sr[i], hr[i])
+                sr_clamped = sr.clamp(0, 1)
+                for i in range(sr_clamped.size(0)):
+                    total_psnr += calculate_psnr(sr_clamped[i], hr[i])
+                    total_ssim += calculate_ssim(sr_clamped[i], hr[i])
             
             # Log to tensorboard
             if self.writer and self.global_step % self.log_every == 0:

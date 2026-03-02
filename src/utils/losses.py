@@ -115,12 +115,12 @@ class SSIMLoss(nn.Module):
             1 - SSIM (loss to minimize)
         """
         channel = pred.size(1)
-        
-        if channel == self.channel and self.window.data.dtype == pred.dtype:
-            window = self.window
-        else:
-            window = self._create_window(self.window_size, channel).to(pred.device).type(pred.dtype)
-        
+        # Cast registered window to match pred device/dtype — AMP-safe
+        window = self.window.to(device=pred.device, dtype=pred.dtype)
+        if window.size(0) != channel:
+            window = self._create_window(self.window_size, channel).to(
+                device=pred.device, dtype=pred.dtype
+            )
         ssim = self._ssim(pred, target, window, channel, self.size_average)
         return 1 - ssim
 
