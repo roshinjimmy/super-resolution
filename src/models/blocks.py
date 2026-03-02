@@ -146,26 +146,3 @@ class MeanShift(nn.Module):
         return F.conv2d(x, self.weight, self.bias)
 
 
-class ChannelAttention(nn.Module):
-    """
-    Channel attention module (squeeze-and-excitation).
-    
-    Optional enhancement for EDSR.
-    """
-    
-    def __init__(self, num_features: int, reduction: int = 16):
-        super().__init__()
-        
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(num_features, num_features // reduction, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(num_features // reduction, num_features, bias=False),
-            nn.Sigmoid()
-        )
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x).view(b, c)
-        y = self.fc(y).view(b, c, 1, 1)
-        return x * y.expand_as(x)

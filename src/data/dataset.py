@@ -283,7 +283,7 @@ class DualSRHFDataset(_DualSRBase):
         augment: bool = True,
         scale: int = 4,
         blur_sigma: float = 1.5,
-        patch_size: int = 32,
+        patch_size: int = 0,
     ):
         self.data       = hf_dataset
         self.split      = split

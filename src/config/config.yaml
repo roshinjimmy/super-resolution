@@ -7,15 +7,16 @@ model:
   scale: 4
   in_channels: 3
   out_channels: 3
+  res_scale: 0.1
 
 # Data
 data:
   dataset_dir: "dataset"
   hr_size: 256
   lr_size: 64
-  patch_size: 0   # 0 = full image (64×64 LR → 256×256 HR); no crop needed — LR is already tiny
-  blur_sigma: 1.5  # Gaussian sigma for LR2 degradation
-  use_hf: true    # Load NWPU-RESISC45 from HuggingFace on-the-fly (no prepare_data.py needed)
+  patch_size: 0 
+  blur_sigma: 1.5
+  use_hf: true
   hf_dataset: "timm/resisc45"
   seed: 42
   train_split: 0.70
@@ -28,8 +29,10 @@ training:
   num_workers: 4
   epochs: 100
   learning_rate: 0.0001
-  weight_decay: 0  # No L2 reg; consistent with EDSR paper — L1+SSIM loss regularizes sufficiently
-  
+  weight_decay: 0
+  grad_clip: 1.0    # Max gradient norm; prevents occasional bad batch from corrupting weights
+  amp: true         # Automatic Mixed Precision — ~1.5–2× GPU speedup, no accuracy trade-off
+
   # Loss weights
   l1_weight: 1.0
   ssim_weight: 0.1

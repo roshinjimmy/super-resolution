@@ -79,7 +79,17 @@ class Trainer:
             factor=scheduler_config.get('factor', 0.5),
             min_lr=scheduler_config.get('min_lr', 1e-6)
         )
-        
+
+        # AMP (Automatic Mixed Precision)
+        self.use_amp = train_config.get('amp', False)
+        self.scaler = (
+            torch.amp.GradScaler('cuda')
+            if (self.use_amp and device.type == 'cuda') else None
+        )
+
+        # Gradient clipping
+        self.grad_clip = train_config.get('grad_clip', 0.0)
+
         # Checkpointing
         checkpoint_config = config.get('checkpoint', {})
         self.checkpoint_dir = Path(checkpoint_config.get('save_dir', 'checkpoints'))
@@ -127,13 +137,24 @@ class Trainer:
             hr = hr.to(self.device)
             
             # Forward pass
-            self.optimizer.zero_grad()
-            sr = self.model(lr1, lr2)
-            loss = self.criterion(sr, hr)
-            
+            self.optimizer.zero_grad(set_to_none=True)
+            with torch.amp.autocast('cuda', enabled=self.scaler is not None):
+                sr = self.model(lr1, lr2)
+                loss = self.criterion(sr, hr)
+
             # Backward pass
-            loss.backward()
-            self.optimizer.step()
+            if self.scaler:
+                self.scaler.scale(loss).backward()
+                if self.grad_clip > 0:
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                loss.backward()
+                if self.grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+                self.optimizer.step()
             
             total_loss += loss.item()
             self.global_step += 1
@@ -217,8 +238,8 @@ class Trainer:
     
     def load_checkpoint(self, checkpoint_path: str):
         """Load model from checkpoint."""
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
+
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
@@ -351,7 +372,14 @@ def main():
         device = torch.device(args.device)
     
     print(f'Using device: {device}')
-    
+
+    # Reproducibility + cuDNN tuning
+    seed = config['data'].get('seed', 42)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.benchmark = True  # Fixed 64×64 input → cuDNN autotuning safe
+
     # Decide whether to use HuggingFace on-the-fly loading or disk
     use_hf = config['data'].get('use_hf', True)
     if args.use_hf:
@@ -364,7 +392,7 @@ def main():
             hf_dataset_name=config['data'].get('hf_dataset', 'timm/resisc45'),
             batch_size=config['training']['batch_size'],
             num_workers=config['training'].get('num_workers', 4),
-            patch_size=config['data'].get('patch_size', 32),
+            patch_size=config['data'].get('patch_size', 0),
             scale=config['model'].get('scale', 4),
             blur_sigma=config['data'].get('blur_sigma', 1.5),
             train_split=config['data'].get('train_split', 0.70),
@@ -376,7 +404,7 @@ def main():
             args.dataset_dir,
             batch_size=config['training']['batch_size'],
             num_workers=config['training'].get('num_workers', 4),
-            patch_size=config['data'].get('patch_size', 32),
+            patch_size=config['data'].get('patch_size', 0),
             scale=config['model'].get('scale', 4)
         )
     
