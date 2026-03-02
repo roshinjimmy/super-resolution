@@ -211,7 +211,7 @@ class Trainer:
         torch.save(checkpoint, path)
         
         if is_best:
-            best_path = self.checkpoint_dir / 'best_model.pth'
+            best_path = self.checkpoint_dir / 'dual_edsr_best.pth'
             torch.save(checkpoint, best_path)
             print(f'  New best model saved! PSNR: {self.best_psnr:.2f} dB')
     

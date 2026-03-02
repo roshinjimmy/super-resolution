@@ -200,7 +200,7 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
     es_delta    = es_cfg.get('min_delta', 0.001)
 
     # Checkpointing / logging
-    ckpt_dir = Path(ckpt_cfg.get('save_dir', 'checkpoints')) / 'single'
+    ckpt_dir = Path(ckpt_cfg.get('save_dir', 'checkpoints'))
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     save_every = ckpt_cfg.get('save_every', 10)
 
@@ -267,7 +267,7 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
             epochs_no_improve = 0
             ckpt = {'epoch': epoch, 'model_state_dict': model.state_dict(),
                     'best_psnr': best_psnr, 'best_ssim': best_ssim}
-            torch.save(ckpt, ckpt_dir / 'best_model.pth')
+            torch.save(ckpt, ckpt_dir / 'single_edsr_best.pth')
         else:
             epochs_no_improve += 1
         if is_best_ssim:
@@ -330,143 +330,3 @@ if __name__ == '__main__':
     print(f'Using device: {device}')
     train_single_edsr(config, use_hf, args.dataset_dir, device)
 
-    
-    def __len__(self):
-        return len(self.images)
-    
-    def __getitem__(self, idx):
-        img_name = self.images[idx].name
-        
-        hr = np.array(Image.open(self.hr_dir / img_name).convert('RGB'))
-        lr = np.array(Image.open(self.lr_dir / img_name).convert('RGB'))
-        
-        # Convert to tensor (C, H, W) and normalize to [0, 1]
-        hr = torch.from_numpy(hr).permute(2, 0, 1).float() / 255.0
-        lr = torch.from_numpy(lr).permute(2, 0, 1).float() / 255.0
-        
-        return lr, hr
-
-
-def train_single_edsr(
-    dataset_dir='dataset',
-    epochs=10,
-    batch_size=4,
-    lr=1e-4,
-    checkpoint_dir='checkpoints_single'
-):
-    """Train SingleEDSR baseline."""
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
-    
-    # Create datasets
-    train_dataset = SingleLRDataset(dataset_dir, 'train')
-    val_dataset = SingleLRDataset(dataset_dir, 'val')
-    
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
-    
-    # Create model
-    model = SingleEDSR(
-        num_features=64,
-        num_residual_blocks=16,
-        scale=4
-    ).to(device)
-    
-    print(f"\nSingleEDSR Parameters: {sum(p.numel() for p in model.parameters()):,}")
-    print(f"Training samples: {len(train_dataset)}")
-    print(f"Validation samples: {len(val_dataset)}")
-    
-    # Loss and optimizer
-    criterion = CombinedLoss(l1_weight=1.0, ssim_weight=0.0)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    
-    best_psnr = 0.0
-    
-    for epoch in range(epochs):
-        # Training
-        model.train()
-        train_loss = 0.0
-        
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
-        for lr_img, hr_img in pbar:
-            lr_img = lr_img.to(device)
-            hr_img = hr_img.to(device)
-            
-            optimizer.zero_grad()
-            sr = model(lr_img)
-            loss = criterion(sr, hr_img)
-            loss.backward()
-            optimizer.step()
-            
-            train_loss += loss.item()
-            pbar.set_postfix({'loss': f'{loss.item():.4f}'})
-        
-        train_loss /= len(train_loader)
-        
-        # Validation
-        model.eval()
-        val_psnr = 0.0
-        val_ssim = 0.0
-        
-        with torch.no_grad():
-            for lr_img, hr_img in val_loader:
-                lr_img = lr_img.to(device)
-                hr_img = hr_img.to(device)
-                
-                sr = model(lr_img)
-                sr = torch.clamp(sr, 0, 1)
-                
-                for i in range(sr.shape[0]):
-                    sr_np = sr[i].cpu().numpy().transpose(1, 2, 0)
-                    hr_np = hr_img[i].cpu().numpy().transpose(1, 2, 0)
-                    val_psnr += calculate_psnr(sr_np, hr_np)
-                    # For SSIM with (H, W, C) format, we need channel_axis=2
-                    try:
-                        from skimage.metrics import structural_similarity as ssim
-                        val_ssim += ssim(sr_np, hr_np, data_range=1.0, channel_axis=2)
-                    except:
-                        val_ssim += calculate_ssim(sr_np, hr_np)
-        
-        val_psnr /= len(val_dataset)
-        val_ssim /= len(val_dataset)
-        
-        print(f"Epoch {epoch+1}/{epochs} | Train Loss: {train_loss:.4f} | "
-              f"Val PSNR: {val_psnr:.2f} dB | Val SSIM: {val_ssim:.4f}")
-        
-        # Save best model
-        if val_psnr > best_psnr:
-            best_psnr = val_psnr
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'best_psnr': best_psnr
-            }, os.path.join(checkpoint_dir, 'best_model.pth'))
-            print(f"  New best model saved! PSNR: {best_psnr:.2f} dB")
-    
-    # Save final model
-    torch.save({
-        'epoch': epochs,
-        'model_state_dict': model.state_dict(),
-        'best_psnr': best_psnr
-    }, os.path.join(checkpoint_dir, 'final_model.pth'))
-    
-    print(f"\nTraining complete! Best PSNR: {best_psnr:.2f} dB")
-    return best_psnr
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train SingleEDSR baseline")
-    parser.add_argument("--dataset_dir", type=str, default="dataset")
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    
-    args = parser.parse_args()
-    
-    train_single_edsr(
-        dataset_dir=args.dataset_dir,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        lr=args.lr
-    )
