@@ -14,6 +14,8 @@ import torch
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
+import matplotlib
+matplotlib.use('Agg')  # headless backend — no display required
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).parent))
