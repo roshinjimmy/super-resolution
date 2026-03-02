@@ -207,7 +207,7 @@ def create_model(config: dict) -> DualEDSR:
         num_features=config.get('num_features', 64),
         num_residual_blocks=config.get('num_residual_blocks', 16),
         scale=config.get('scale', 4),
-        res_scale=config.get('res_scale', 1.0),
+        res_scale=config.get('res_scale', 0.1),
         use_mean_shift=config.get('use_mean_shift', True)
     )
 

@@ -47,7 +47,7 @@ def load_single_model(checkpoint_path: str, config: dict, device: torch.device) 
         num_features=config['model'].get('num_features', 64),
         num_residual_blocks=config['model'].get('num_residual_blocks', 16),
         scale=config['model'].get('scale', 4),
-        res_scale=config['model'].get('res_scale', 1.0),
+        res_scale=config['model'].get('res_scale', 0.1),
         use_mean_shift=config['model'].get('use_mean_shift', True),
     )
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)

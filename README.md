@@ -18,7 +18,7 @@ LR2 (blur+bic ×4) ─→ ShallowConv(3×3) ──┘
 | Feature channels | 64 |
 | Fusion | Channel-wise concat + 1×1 conv |
 | Upsampling | PixelShuffle ×4 |
-| Normalisation | MeanShift (ImageNet RGB mean/std) |
+| Normalisation | MeanShift (ImageNet RGB mean) |
 | Training | AMP (mixed precision), gradient clipping (norm 1.0) |
 
 ---

@@ -54,7 +54,7 @@ def load_dual_model(ckpt_path: str, config: dict, device_str: str) -> DualEDSR:
         num_features=cfg.get("num_features", 64),
         num_residual_blocks=cfg.get("num_residual_blocks", 16),
         scale=cfg.get("scale", 4),
-        res_scale=cfg.get("res_scale", 1.0),
+        res_scale=cfg.get("res_scale", 0.1),
         use_mean_shift=cfg.get("use_mean_shift", True),
     )
     ckpt  = torch.load(ckpt_path, map_location=device_str, weights_only=False)
@@ -73,7 +73,7 @@ def load_single_model(ckpt_path: str, config: dict, device_str: str) -> SingleED
         num_features=cfg.get("num_features", 64),
         num_residual_blocks=cfg.get("num_residual_blocks", 16),
         scale=cfg.get("scale", 4),
-        res_scale=cfg.get("res_scale", 1.0),
+        res_scale=cfg.get("res_scale", 0.1),
         use_mean_shift=cfg.get("use_mean_shift", True),
     )
     ckpt  = torch.load(ckpt_path, map_location=device_str, weights_only=False)

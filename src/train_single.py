@@ -12,13 +12,11 @@ Usage:
 import os
 import sys
 import argparse
-import time
 from pathlib import Path
 from datetime import datetime
 
 import yaml
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
@@ -27,8 +25,6 @@ from PIL import Image
 import torchvision.transforms as transforms
 import random
 import torchvision.transforms.functional as TF
-import cv2
-import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -177,7 +173,7 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
         num_features=config['model']['num_features'],
         num_residual_blocks=config['model']['num_residual_blocks'],
         scale=scale,
-        res_scale=config['model'].get('res_scale', 1.0),
+        res_scale=config['model'].get('res_scale', 0.1),
         use_mean_shift=config['model'].get('use_mean_shift', True),
     ).to(device)
     print(f"\nSingleEDSR parameters: {sum(p.numel() for p in model.parameters()):,}")
@@ -190,6 +186,7 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
     )
     optimizer = optim.Adam(model.parameters(),
                            lr=train_cfg['learning_rate'],
+                           betas=(0.9, 0.999),
                            weight_decay=train_cfg.get('weight_decay', 0))
     sched_cfg = train_cfg.get('scheduler', {})
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(

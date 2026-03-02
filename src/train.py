@@ -67,6 +67,7 @@ class Trainer:
         self.optimizer = optim.Adam(
             self.model.parameters(),
             lr=train_config['learning_rate'],
+            betas=(0.9, 0.999),
             weight_decay=train_config.get('weight_decay', 0)
         )
         
@@ -194,7 +195,7 @@ class Trainer:
             lr2 = lr2.to(self.device)
             hr = hr.to(self.device)
             
-            sr = self.model(lr1, lr2)
+            sr = torch.clamp(self.model(lr1, lr2), 0, 1)
             loss = self.criterion(sr, hr)
             
             total_loss += loss.item()
@@ -225,8 +226,11 @@ class Trainer:
             'best_ssim': self.best_ssim,
             'best_psnr_epoch': self.best_psnr_epoch,
             'best_ssim_epoch': self.best_ssim_epoch,
+            'epochs_without_improvement': self.epochs_without_improvement,
             'config': self.config
         }
+        if self.scaler:
+            checkpoint['scaler_state_dict'] = self.scaler.state_dict()
         
         path = self.checkpoint_dir / filename
         torch.save(checkpoint, path)
@@ -243,14 +247,17 @@ class Trainer:
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        self.current_epoch = checkpoint['epoch']
+        if self.scaler and 'scaler_state_dict' in checkpoint:
+            self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
+        self.current_epoch = checkpoint['epoch'] + 1
         self.global_step = checkpoint['global_step']
         self.best_psnr = checkpoint.get('best_psnr', 0)
         self.best_ssim = checkpoint.get('best_ssim', 0)
         self.best_psnr_epoch = checkpoint.get('best_psnr_epoch', -1)
         self.best_ssim_epoch = checkpoint.get('best_ssim_epoch', -1)
+        self.epochs_without_improvement = checkpoint.get('epochs_without_improvement', 0)
         
-        print(f'Loaded checkpoint from epoch {self.current_epoch}')
+        print(f'Resumed from epoch {self.current_epoch}  (best PSNR {self.best_psnr:.4f} dB)')
     
     def train(self, num_epochs: int, resume_from: str = None):
         """Main training loop."""
