@@ -331,7 +331,12 @@ def get_hf_dataloaders(
         )
 
     print(f"Loading '{hf_dataset_name}' from HuggingFace (cached after first run)...")
-    ds = load_dataset(hf_dataset_name, split="train")
+    from datasets import concatenate_datasets
+    ds = concatenate_datasets([
+        load_dataset(hf_dataset_name, split="train"),
+        load_dataset(hf_dataset_name, split="validation"),
+        load_dataset(hf_dataset_name, split="test"),
+    ])
     ds = ds.shuffle(seed=seed)
 
     n       = len(ds)

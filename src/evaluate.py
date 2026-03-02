@@ -403,7 +403,12 @@ def main():
             except ImportError:
                 raise RuntimeError("Install HuggingFace datasets: pip install datasets")
             hf_name = config['data'].get('hf_dataset', 'timm/resisc45')
-            ds = load_dataset(hf_name, split='train')
+            from datasets import concatenate_datasets
+            ds = concatenate_datasets([
+                load_dataset(hf_name, split='train'),
+                load_dataset(hf_name, split='validation'),
+                load_dataset(hf_name, split='test'),
+            ])
             ds = ds.shuffle(seed=config['data'].get('seed', 42))
             n = len(ds)
             n_train = int(n * config['data'].get('train_split', 0.70))

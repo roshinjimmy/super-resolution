@@ -148,7 +148,13 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
         except ImportError:
             raise RuntimeError("Install HF datasets: pip install datasets")
         print(f"Loading '{data_cfg.get('hf_dataset', 'timm/resisc45')}' from HuggingFace...")
-        ds = load_dataset(data_cfg.get('hf_dataset', 'timm/resisc45'), split='train')
+        from datasets import concatenate_datasets
+        hf_name = data_cfg.get('hf_dataset', 'timm/resisc45')
+        ds = concatenate_datasets([
+            load_dataset(hf_name, split='train'),
+            load_dataset(hf_name, split='validation'),
+            load_dataset(hf_name, split='test'),
+        ])
         ds = ds.shuffle(seed=data_cfg.get('seed', 42))
         n = len(ds)
         n_train = int(n * data_cfg.get('train_split', 0.70))
