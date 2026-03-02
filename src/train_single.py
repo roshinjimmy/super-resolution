@@ -132,14 +132,15 @@ class SingleDiskDataset(Dataset):
 # Main training function
 # ---------------------------------------------------------------------------
 
-def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torch.device):
+def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torch.device,
+                      resume_from: str = None):
     data_cfg  = config['data']
     train_cfg = config['training']
     ckpt_cfg  = config.get('checkpoint', {})
     log_cfg   = config.get('logging', {})
 
     scale      = config['model'].get('scale', 4)
-    patch_size = data_cfg.get('patch_size', 32)
+    patch_size = data_cfg.get('patch_size', 0)
     batch_size = train_cfg['batch_size']
     num_workers = train_cfg.get('num_workers', 4)
     epochs     = train_cfg['epochs']
@@ -171,9 +172,13 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
 
     # Model
     model = SingleEDSR(
+        in_channels=config['model'].get('in_channels', 3),
+        out_channels=config['model'].get('out_channels', 3),
         num_features=config['model']['num_features'],
         num_residual_blocks=config['model']['num_residual_blocks'],
-        scale=scale
+        scale=scale,
+        res_scale=config['model'].get('res_scale', 1.0),
+        use_mean_shift=config['model'].get('use_mean_shift', True),
     ).to(device)
     print(f"\nSingleEDSR parameters: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -199,6 +204,14 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
     es_patience = es_cfg.get('patience', 20)
     es_delta    = es_cfg.get('min_delta', 0.001)
 
+    # AMP + gradient clipping
+    use_amp   = train_cfg.get('amp', False)
+    scaler    = (
+        torch.amp.GradScaler('cuda')
+        if (use_amp and device.type == 'cuda') else None
+    )
+    grad_clip = train_cfg.get('grad_clip', 0.0)
+
     # Checkpointing / logging
     ckpt_dir = Path(ckpt_cfg.get('save_dir', 'checkpoints'))
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -214,23 +227,53 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
     best_psnr_epoch = -1
     best_ssim_epoch = -1
     epochs_no_improve = 0
+    start_epoch = 0
+
+    # Resume from checkpoint
+    if resume_from:
+        ckpt = torch.load(resume_from, map_location=device, weights_only=False)
+        model.load_state_dict(ckpt['model_state_dict'])
+        if 'optimizer_state_dict' in ckpt:
+            optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        if 'scheduler_state_dict' in ckpt:
+            scheduler.load_state_dict(ckpt['scheduler_state_dict'])
+        if scaler and 'scaler_state_dict' in ckpt:
+            scaler.load_state_dict(ckpt['scaler_state_dict'])
+        start_epoch      = ckpt.get('epoch', 0) + 1
+        best_psnr        = ckpt.get('best_psnr', 0.0)
+        best_ssim        = ckpt.get('best_ssim', 0.0)
+        best_psnr_epoch  = ckpt.get('best_psnr_epoch', -1)
+        best_ssim_epoch  = ckpt.get('best_ssim_epoch', -1)
+        epochs_no_improve = ckpt.get('epochs_no_improve', 0)
+        print(f'Resumed from {resume_from}  (epoch {start_epoch}, best PSNR {best_psnr:.4f} dB)')
 
     print(f'\nStarting SingleEDSR training on {device}')
     print(f'Training samples : {len(train_ds)}')
     print(f'Validation samples: {len(val_ds)}')
     print('-' * 50)
 
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         # ---- Train ----
         model.train()
         total_loss = 0.0
         for lr_img, hr_img in tqdm(train_loader, desc=f'Epoch {epoch+1}'):
             lr_img, hr_img = lr_img.to(device), hr_img.to(device)
-            optimizer.zero_grad()
-            sr = model(lr_img)
-            loss = criterion(sr, hr_img)
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            with torch.amp.autocast('cuda', enabled=scaler is not None):
+                sr = model(lr_img)
+                loss = criterion(sr, hr_img)
+            if scaler:
+                scaler.scale(loss).backward()
+                if grad_clip > 0:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                if grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                optimizer.step()
             total_loss += loss.item()
         train_loss = total_loss / len(train_loader)
 
@@ -265,8 +308,19 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
             best_psnr = val_psnr
             best_psnr_epoch = epoch + 1
             epochs_no_improve = 0
-            ckpt = {'epoch': epoch, 'model_state_dict': model.state_dict(),
-                    'best_psnr': best_psnr, 'best_ssim': best_ssim}
+            ckpt = {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+                'best_psnr': best_psnr,
+                'best_ssim': best_ssim,
+                'best_psnr_epoch': best_psnr_epoch,
+                'best_ssim_epoch': best_ssim_epoch,
+                'epochs_no_improve': epochs_no_improve,
+            }
+            if scaler:
+                ckpt['scaler_state_dict'] = scaler.state_dict()
             torch.save(ckpt, ckpt_dir / 'single_edsr_best.pth')
         else:
             epochs_no_improve += 1
@@ -275,8 +329,20 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
             best_ssim_epoch = epoch + 1
 
         if (epoch + 1) % save_every == 0:
-            torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
-                        'best_psnr': best_psnr}, ckpt_dir / f'checkpoint_epoch_{epoch+1}.pth')
+            periodic_ckpt = {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+                'best_psnr': best_psnr,
+                'best_ssim': best_ssim,
+                'best_psnr_epoch': best_psnr_epoch,
+                'best_ssim_epoch': best_ssim_epoch,
+                'epochs_no_improve': epochs_no_improve,
+            }
+            if scaler:
+                periodic_ckpt['scaler_state_dict'] = scaler.state_dict()
+            torch.save(periodic_ckpt, ckpt_dir / f'single_checkpoint_epoch_{epoch+1}.pth')
 
         psnr_mark = ' ← best PSNR' if is_best_psnr else ''
         ssim_mark = ' ← best SSIM' if is_best_ssim else ''
@@ -306,6 +372,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_dir', type=str, default='dataset')
     parser.add_argument('--epochs', type=int, default=None)
     parser.add_argument('--device', type=str, default='auto')
+    parser.add_argument('--resume', type=str, default=None,
+                        help='Path to checkpoint to resume from')
     parser.add_argument('--use_hf', action='store_true', default=None,
                         help='Load from HuggingFace (overrides config)')
     parser.add_argument('--no_hf', action='store_true',
@@ -328,5 +396,13 @@ if __name__ == '__main__':
         device = torch.device(args.device)
 
     print(f'Using device: {device}')
-    train_single_edsr(config, use_hf, args.dataset_dir, device)
+
+    # Reproducibility + cuDNN tuning
+    seed = config['data'].get('seed', 42)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.benchmark = True  # Fixed input size → cuDNN autotuning safe
+
+    train_single_edsr(config, use_hf, args.dataset_dir, device, resume_from=args.resume)
 
