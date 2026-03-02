@@ -1,0 +1,67 @@
+# Dual-SR Configuration
+
+# Model Architecture
+model:
+  num_residual_blocks: 16
+  num_features: 64
+  scale: 4
+  in_channels: 3
+  out_channels: 3
+
+# Data
+data:
+  dataset_dir: "dataset"
+  hr_size: 256
+  lr_size: 64
+  patch_size: 0   # 0 = full image (64×64 LR → 256×256 HR); no crop needed — LR is already tiny
+  blur_sigma: 1.5  # Gaussian sigma for LR2 degradation
+  use_hf: true    # Load NWPU-RESISC45 from HuggingFace on-the-fly (no prepare_data.py needed)
+  hf_dataset: "timm/resisc45"
+  seed: 42
+  train_split: 0.70
+  val_split: 0.15
+  test_split: 0.15
+
+# Training
+training:
+  batch_size: 16
+  num_workers: 4
+  epochs: 100
+  learning_rate: 0.0001
+  weight_decay: 0  # No L2 reg; consistent with EDSR paper — L1+SSIM loss regularizes sufficiently
+  
+  # Loss weights
+  l1_weight: 1.0
+  ssim_weight: 0.1
+  use_ssim: true
+  
+  # Scheduler
+  scheduler:
+    type: "ReduceLROnPlateau"
+    patience: 10
+    factor: 0.5
+    min_lr: 0.00001
+  
+  # Early stopping
+  early_stopping:
+    patience: 20
+    min_delta: 0.001
+
+# Checkpoints
+checkpoint:
+  save_dir: "checkpoints"
+  save_every: 10
+  keep_best: true
+
+# Logging
+logging:
+  log_dir: "logs"
+  log_every: 100
+  use_tensorboard: true
+
+# Evaluation
+evaluation:
+  output_dir: "outputs"
+  save_images: true
+  compute_metrics: ["psnr", "ssim"]
+  blind_metrics: ["niqe", "brisque"]

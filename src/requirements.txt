@@ -1,0 +1,14 @@
+torch>=2.0.0
+torchvision>=0.15.0
+numpy
+Pillow
+opencv-python
+scikit-image
+pyyaml
+tqdm
+matplotlib
+tensorboard
+pyiqa
+datasets
+streamlit>=1.32.0
+pandas

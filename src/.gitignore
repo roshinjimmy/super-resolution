@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Model checkpoints (large files)
+checkpoints/
+checkpoints_single/
+*.pth
+*.pt
+
+# Dataset (large files)
+dataset/
+downloads/
+*.zip
+
+# Logs
+logs/
+*.log
+
+# Outputs
+outputs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp

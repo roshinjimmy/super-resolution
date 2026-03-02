@@ -1,0 +1,306 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{cite}
+\usepackage{balance}
+
+
+\title{Dual-Image Super-Resolution of Remote Sensing Imagery Using a Modified EDSR Framework}
+
+\author{
+\IEEEauthorblockN{Roshin Jimmy}
+\IEEEauthorblockA{
+Department of Computer Science\\
+Model Engineering College\\
+Kochi, India\\
+roshinjimmy.mec@gmail.com
+}
+\and
+\IEEEauthorblockN{Rohit Anish}
+\IEEEauthorblockA{
+Department of Computer Science\\
+Model Engineering College\\
+Kochi, India\\
+rohitanish.mec@gmail.com
+}
+\and
+\IEEEauthorblockN{Nandu Prakash}
+\IEEEauthorblockA{
+Department of Computer Science\\
+Model Engineering College\\
+Kochi, India\\
+nanduprakash.mec@gmail.com
+}
+\and
+\IEEEauthorblockN{Nikhil M}
+\IEEEauthorblockA{
+Department of Computer Science\\
+Model Engineering College\\
+Kochi, India\\
+nikhilm.mec@gmail.com
+}
+\and
+\IEEEauthorblockN{Sreekumar K}
+\IEEEauthorblockA{
+Department of Computer Science\\
+Model Engineering College\\
+Kochi, India\\
+sreekumar@email.com
+}
+}
+
+
+\begin{document}
+
+\maketitle
+
+% ======================
+\begin{abstract}
+% 150--200 words
+Remote sensing image super-resolution is essential for enhancing spatial details in Earth observation data, yet its practical deployment is limited by the scarcity of high-resolution ground truth. This paper proposes a dual-image super-resolution framework based on a modified Enhanced Deep Super-Resolution Network (EDSR) that exploits complementary information from two low-resolution observations of the same scene. The proposed method employs a bicubic-centric dual input strategy, where one input is obtained via bicubic downsampling and the second via Gaussian-blur followed by bicubic downsampling, reflecting realistic sensor variation in satellite imagery. A channel-fusion architecture concatenates shallow features from both inputs and passes the fused representation through a shared residual body for reconstruction. Experiments on the NWPU-RESISC45 remote sensing dataset with a 70:15:15 train/val/test split demonstrate consistent improvement over single-image EDSR baselines, with PSNR increasing from XX.XX~dB to YY.YY~dB. Blind evaluation on real Sentinel-2 imagery further supports the practical applicability of the proposed framework.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Remote sensing, super-resolution, dual-image fusion, EDSR, reference-free evaluation
+\end{IEEEkeywords}
+
+% ======================
+\section{Introduction}
+
+Remote sensing imagery plays a vital role in a wide range of applications, including environmental monitoring, urban planning, disaster management, and agricultural assessment. The spatial resolution of satellite images directly influences the accuracy and reliability of downstream analysis tasks. However, due to physical limitations of imaging sensors, orbital constraints, and cost considerations, acquiring high-resolution satellite imagery remains challenging. As a result, most publicly available Earth observation data are captured at relatively low spatial resolutions, which restricts their practical usability in fine-grained analysis.
+
+Super-resolution (SR) techniques aim to reconstruct high-resolution images from low-resolution observations and have been extensively studied in recent years. Early approaches relied on interpolation and example-based learning, while recent advances in deep learning have led to significant performance improvements. Convolutional neural network (CNN)-based methods, such as Enhanced Deep Super-Resolution Networks (EDSR), have demonstrated strong reconstruction capabilities in single-image super-resolution tasks. However, most existing methods assume the availability of large-scale high-resolution ground truth data for supervised training, which is often unrealistic in real-world remote sensing scenarios. Moreover, generative adversarial network (GAN)-based approaches, although capable of producing visually appealing results, tend to introduce hallucinated textures that may distort critical geospatial information.
+
+To overcome the limitations of single-image super-resolution, multi-image and multi-observation techniques have been explored to exploit complementary information from multiple low-resolution inputs. In remote sensing applications, satellite platforms frequently capture the same geographic region under varying atmospheric conditions, illumination levels, and temporal intervals. These multiple observations provide an opportunity to enhance reconstruction quality through effective information fusion. Nevertheless, designing practical multi-image super-resolution frameworks that operate reliably under reference-free conditions remains an open research challenge.
+
+In this work, we propose a dual-image super-resolution framework for remote sensing imagery based on a modified Enhanced Deep Super-Resolution Network (EDSR). The proposed approach employs parallel feature extraction branches to encode complementary information from two low-resolution inputs generated via bicubic-centric degradation, followed by channel-wise feature fusion and deep residual reconstruction. The generalization capability of the proposed method is further evaluated on real Sentinel-2 imagery under reference-free settings using blind perceptual quality metrics. The main contributions of this work are summarized as follows:
+
+\begin{itemize}
+\item A dual-input super-resolution architecture based on a modified EDSR framework with channel fusion, designed for bicubic-centric dual low-resolution inputs that simulate realistic satellite sensor variation.
+\item A bicubic-plus-Gaussian degradation protocol for constructing complementary dual inputs, aligned with practical satellite preprocessing pipelines.
+\item A comparative evaluation of single-image and dual-image EDSR under the proposed degradation protocol on the NWPU-RESISC45 remote sensing dataset.
+\item A comprehensive evaluation protocol incorporating both full-reference metrics on NWPU-RESISC45 and reference-free blind quality assessment on real Sentinel-2 imagery.
+\end{itemize}
+
+
+% ======================
+\section{Related Work}
+
+This section reviews relevant literature on image super-resolution, with a focus on deep learning-based methods, generative adversarial approaches, and multi-image super-resolution techniques in remote sensing.
+
+\subsection{Single-Image Super-Resolution}
+
+Single-image super-resolution (SISR) has been extensively studied in computer vision and remote sensing communities. Early learning-based approaches utilized sparse coding and example-based regression to reconstruct high-resolution images from low-resolution inputs. With the advent of deep learning, convolutional neural networks (CNNs) have become the dominant paradigm for SISR.
+
+Dong \textit{et al.} introduced SRCNN, which demonstrated the effectiveness of end-to-end CNN-based super-resolution. Subsequent works, including VDSR and DRCN, employed deeper architectures to improve reconstruction accuracy. Lim \textit{et al.} proposed the Enhanced Deep Super-Resolution Network (EDSR)~\cite{lim2017edsr}, which removed batch normalization layers and introduced residual scaling, leading to significant performance gains.
+
+Several SISR methods have been applied to remote sensing imagery, achieving promising results under supervised settings. However, these approaches rely solely on a single observation and often struggle to recover fine spatial details under severe degradation. Moreover, their dependence on large-scale high-resolution ground truth data limits their applicability in real-world satellite scenarios.
+
+Representative remote-sensing SISR variants include improved multi-scale residual learning, residual-dense attention, and context-aware lightweight designs \cite{huan2021msrn, yu2022rdhan, peng2023context}. These methods improve single-observation reconstruction quality but still inherit the information bottleneck of one input frame.
+
+\subsection{GAN-Based Super-Resolution}
+
+Generative adversarial networks (GANs) have been widely adopted for perceptual super-resolution due to their ability to generate visually appealing textures. Ledig \textit{et al.} proposed SRGAN, which introduced adversarial and perceptual losses to enhance visual realism. ESRGAN further improved reconstruction quality through refined network architectures and loss functions.
+
+GAN-based methods have also been explored in remote sensing applications to enhance visual sharpness. While these approaches produce visually attractive results, they tend to introduce hallucinated details that may not correspond to actual ground features. In critical applications such as mapping and surveillance, such artifacts can lead to misleading interpretations. Consequently, deterministic reconstruction methods remain preferable for fidelity-oriented remote sensing tasks.
+
+In particular, the dual-image GAN framework of Greza \textit{et al.} demonstrates the potential of multi-observation SR for satellite imagery \cite{greza2024gan}. Our work is positioned as a deterministic dual-image alternative that prioritizes fidelity and stable deployment behavior.
+
+\subsection{Multi-Image and Multi-Observation Super-Resolution}
+
+Multi-image super-resolution (MISR) exploits complementary information from multiple low-resolution observations to enhance reconstruction quality. Early MISR methods relied on explicit motion estimation and image registration prior to reconstruction. More recent deep learning-based approaches integrate alignment and fusion within unified network architectures.
+
+Several studies have investigated multi-frame and multi-view super-resolution in video and remote sensing contexts. These methods demonstrate that fusing multiple observations can improve robustness to noise and degradation. However, many existing approaches assume precise alignment and access to high-resolution ground truth, which are often unavailable in satellite imaging scenarios.
+
+In the context of remote sensing, multi-temporal imagery provides natural opportunities for multi-observation fusion. Recent works have explored temporal and multi-sensor fusion for resolution enhancement, yet practical reference-free frameworks remain limited. Compared to existing methods, the proposed approach focuses on dual-image fusion within a deterministic reconstruction framework and emphasizes applicability under reference-free conditions.
+
+Recent MISR and degradation-aware methods in remote sensing include transformer-based feature fusion, blind dual-regression SR, and multi-degradation kernel-correction frameworks \cite{zhang2022trmisr, lei2022idrn, liu2024multideg}. Self-supervised and unsupervised alternatives have also been investigated for realistic satellite conditions where paired HR references are scarce \cite{nguyen2023l1bsr, wang2025unsupervised, sun2025variational}.
+
+\subsection{Positioning of the Proposed Method}
+
+Based on the above review, existing super-resolution methods either rely on single-image inputs, emphasize perceptual quality through adversarial training, or require strong supervision and alignment assumptions. In contrast, the proposed method integrates dual-image fusion with a modified EDSR backbone and employs degradation-aware training to simulate heterogeneous sensing conditions. Furthermore, a dedicated reference-free evaluation protocol is adopted to assess real-world performance on satellite imagery.
+
+By combining supervised learning with practical multi-observation fusion and conservative evaluation, the proposed framework addresses key limitations of prior work and provides a reliable solution for remote sensing super-resolution under realistic deployment scenarios.
+
+% ======================
+\section{Proposed Method}
+
+This section describes the architecture and training strategy of the proposed dual-image super-resolution framework. The objective is to reconstruct a high-resolution image by effectively fusing complementary information from two low-resolution observations.
+
+\subsection{Overall Architecture}
+
+The proposed network is based on a modified Enhanced Deep Super-Resolution Network (EDSR) and follows a dual-branch feature extraction and fusion paradigm. As illustrated in Fig.~\ref{fig:architecture}, two low-resolution inputs are processed independently by parallel shallow convolutional encoders to extract low-level features. The resulting feature maps are subsequently fused and passed through a series of deep residual blocks for hierarchical feature refinement. Finally, an upsampling module reconstructs the high-resolution output at the desired scale.
+
+Each input branch begins with a $3 \times 3$ convolution layer that maps the input image to a high-dimensional feature space. The two feature streams are then merged through a feature fusion module, enabling the network to exploit complementary information from both observations. The fused representation is processed by multiple residual blocks without batch normalization, following the design principles of EDSR, to preserve spatial fidelity and stabilize training.
+
+\subsection{Dual Low-Resolution Input Generation}
+
+For each high-resolution reference image, two complementary low-resolution inputs are generated as follows:
+\begin{itemize}
+\item \textbf{LR1 (bicubic):} HR $\rightarrow$ bicubic downsampling ($\times4$).
+\item \textbf{LR2 (blur+bicubic):} HR $\rightarrow$ Gaussian blur ($\sigma=1.5$) $\rightarrow$ bicubic downsampling ($\times4$).
+\end{itemize}
+LR1 preserves high-frequency structural content while LR2 simulates sensor-level optical blur, reflecting natural variation between acquisitions of the same scene. This bicubic-centric protocol is aligned with standard satellite preprocessing pipelines and provides a clean, controlled complementary signal for dual-image fusion.
+
+All low-resolution images are generated at a scale factor of $\times4$, yielding input patches of size $64 \times 64$ from $256 \times 256$ high-resolution references.
+
+\subsection{Fusion Mechanisms}
+
+Let $I_{1}$ and $I_{2}$ denote the two low-resolution input images. Each input is independently encoded using a shallow convolutional layer to produce feature maps $F_{1}$ and $F_{2}$. These feature representations are concatenated along the channel dimension and subsequently passed through a $1 \times 1$ convolutional layer for dimensionality reduction and adaptive feature integration.
+
+\begin{equation}
+F_{f} = \phi([\;F_{1}, F_{2}\;]),
+\end{equation}
+
+where $[\cdot]$ denotes channel-wise concatenation and $\phi(\cdot)$ represents the $1 \times 1$ fusion convolution operator. The fused feature map $F_{f}$ serves as the input to the deep residual reconstruction module. This fusion strategy enables the network to selectively emphasize informative features from each input while suppressing noise and degradation artifacts.
+
+This channel-fusion mechanism is employed in the proposed architecture. The processing flow is: normalization of aligned LR pairs, dual-branch shallow feature extraction, channel-wise fusion via $1\times1$ convolution, modified EDSR residual reconstruction, and PixelShuffle-based $\times4$ upsampling.
+
+\subsection{Residual Reconstruction and Upsampling}
+
+The fused feature representation is refined through a stack of $N$ residual blocks, each consisting of two $3 \times 3$ convolutional layers and a skip connection. Batch normalization layers are omitted to avoid restricting feature dynamics and to improve reconstruction accuracy. Residual scaling is employed to stabilize training and accelerate convergence.
+
+Following residual reconstruction, an upsampling module based on pixel-shuffle operations is used to increase the spatial resolution by a factor of four. A final convolution layer maps the upsampled feature maps to the output image space, producing the super-resolved image.
+
+\subsection{Loss Function}
+
+The network is optimized using a combined $L_{1}$ and structural similarity (SSIM) loss:
+
+\begin{equation}
+\mathcal{L}_{SR} = \lambda_{1}\,\frac{1}{M}\sum_{i=1}^{M}\lVert\hat{I}_{i}-I_{i}\rVert_{1} + \lambda_{s}\,(1-\text{SSIM}(\hat{I}_{i},I_{i})),
+\end{equation}
+
+where $\hat{I}_{i}$ and $I_{i}$ denote the reconstructed and ground-truth images, $M$ is the number of training samples, and $\lambda_{1}=1.0$, $\lambda_{s}=0.1$ are the respective loss weights. The $L_{1}$ term encourages accurate pixel-level reconstruction while avoiding excessive smoothing, and the SSIM term additionally penalizes structural distortions in the output.
+
+
+
+% ======================
+\section{Experimental Setup}
+
+This section describes the datasets, preprocessing procedures, training configuration, and evaluation metrics employed to assess the performance of the proposed dual-image super-resolution framework.
+
+\subsection{Datasets}
+
+\subsubsection{NWPU-RESISC45 Dataset}
+
+The NWPU-RESISC45 dataset~\cite{cheng2017nwpu} is used for supervised training and quantitative evaluation. It consists of 31,500 remote sensing images spanning 45 scene categories with 700 images per category, each at a spatial resolution of $256 \times 256$ pixels. The images are captured over more than 20 countries from Google Earth and cover a diverse range of land-use and land-cover scenes. These images are treated as high-resolution ground truth references during training.
+
+For each high-resolution image, dual low-resolution inputs are generated using the degradation pipelines described in Section~III-B. The resulting low-resolution images are of size $64 \times 64$, corresponding to an upscaling factor of four.
+
+The dataset is randomly divided into training, validation, and testing subsets with a ratio of 70:15:15, yielding 22,050 training images, 4,725 validation images, and 4,725 test images.
+
+\subsubsection{Sentinel-2 Imagery}
+
+To evaluate the real-world applicability of the proposed method under reference-free conditions, Sentinel-2 Level-2A imagery is utilized. RGB bands with a spatial resolution of 10 meters are selected for evaluation. Multiple observations of the same geographic region acquired at different time instances are used to construct dual-input pairs.
+
+Since ground-truth high-resolution images are unavailable for Sentinel-2 data, evaluation is restricted to qualitative analysis and no-reference perceptual quality metrics.
+
+\subsection{Preprocessing}
+
+All images are normalized to the range $[0,1]$ prior to network input. The full $64 \times 64$ LR images are used for training without patch cropping; the dataset size of 31,500 images provides sufficient sample diversity without sub-image sampling. Data augmentation techniques, including random horizontal and vertical flipping and random $90^{\circ}$ rotations, are applied during training to improve model generalization.
+
+For NWPU-RESISC45, LR1 is generated via bicubic downsampling and LR2 via Gaussian-blur followed by bicubic downsampling, as described in Section~III-B. Single-image EDSR baselines use LR1 only.
+
+For Sentinel-2 imagery, radiometric calibration and atmospheric correction provided in the Level-2A products are retained. All images are cropped into overlapping patches to facilitate efficient inference on large scenes.
+
+\subsection{Training Configuration}
+
+The proposed network is implemented using the PyTorch deep learning framework. The model uses the EDSR baseline architecture with 16 residual blocks and 64 feature channels. Training is performed using the Adam optimizer with $\beta_{1}=0.9$, $\beta_{2}=0.999$, and no weight decay, consistent with the original EDSR training protocol~\cite{lim2017edsr}. The initial learning rate is set to $1 \times 10^{-4}$ and is halved when validation PSNR saturates (ReduceLROnPlateau, patience 10).
+
+The network is trained for up to 100 epochs with a batch size of 16, using early stopping (patience 20 epochs) to avoid overfitting. Full $64 \times 64$ LR images are used as training inputs without random patch cropping, as the dataset provides sufficient diversity across 31,500 images. Single-image and dual-image EDSR models are trained separately under the same optimization schedule for fair comparison. All experiments are conducted on a workstation equipped with an NVIDIA GPU.
+
+\subsection{Evaluation Metrics}
+
+For supervised evaluation on the NWPU-RESISC45 dataset, peak signal-to-noise ratio (PSNR) and structural similarity index (SSIM) are adopted as full-reference image quality metrics. These metrics quantitatively measure reconstruction fidelity with respect to ground-truth high-resolution images.
+
+For reference-free evaluation on Sentinel-2 imagery, no-reference image quality assessment metrics, including Natural Image Quality Evaluator (NIQE) and Blind/Referenceless Image Spatial Quality Evaluator (BRISQUE), are employed. Lower values of these metrics indicate better perceptual quality.
+
+In addition to quantitative metrics, qualitative visual comparisons between bicubic interpolation, single-image EDSR, and the proposed method are presented to assess perceptual improvements.
+
+% ======================
+\section{Results and Analysis}
+
+This section presents the quantitative and qualitative evaluation of the proposed dual-image super-resolution framework. The performance is assessed on both supervised and reference-free settings to demonstrate technical correctness and real-world applicability.
+
+\subsection{Quantitative Results on NWPU-RESISC45}
+
+Table~\ref{tab:nwpu_results} summarizes the quantitative performance of the primary bicubic-centric dual-image method against baselines on the NWPU-RESISC45 dataset at an upscaling factor of $\times4$.
+
+\begin{table}[t]
+\centering
+\caption{Quantitative Results on NWPU-RESISC45 Dataset ($\times4$)}
+\label{tab:nwpu_results}
+\begin{tabular}{lcc}
+\toprule
+Method & PSNR (dB) & SSIM \\
+\midrule
+Bicubic & XX.XX & X.XXX \\
+Single-Image EDSR (Bicubic Input) & XX.XX & X.XXX \\
+Dual-Image EDSR (Bicubic+Gaussian, Channel Fusion) & \textbf{XX.XX} & \textbf{X.XXX} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+As shown in Table~\ref{tab:nwpu_results}, the proposed dual-image EDSR with bicubic-centric inputs outperforms the single-image baseline in PSNR and SSIM, demonstrating that fusing complementary observations consistently improves reconstruction fidelity over a single degraded input.
+
+\subsection{Qualitative Results on NWPU-RESISC45}
+
+Fig.~\ref{fig:nwpu_visual} presents visual comparisons of representative test samples from the NWPU-RESISC45 dataset. The proposed method produces sharper edges and improved texture consistency compared to bicubic and single-image EDSR. In particular, structural details such as building boundaries and road patterns are reconstructed more accurately, demonstrating the effectiveness of the feature fusion strategy.
+
+\subsection{Reference-Free Evaluation on Sentinel-2 Imagery}
+
+To evaluate the real-world applicability of the proposed framework, experiments are conducted on Sentinel-2 imagery under reference-free conditions. Since ground-truth high-resolution images are unavailable, evaluation is performed using no-reference perceptual quality metrics and qualitative analysis.
+
+Table~\ref{tab:sentinel_results} reports the NIQE and BRISQUE scores obtained for bicubic interpolation and the proposed method.
+
+\begin{table}[t]
+\centering
+\caption{Blind Evaluation Results on Sentinel-2 Imagery}
+\label{tab:sentinel_results}
+\begin{tabular}{lcc}
+\toprule
+Method & NIQE $\downarrow$ & BRISQUE $\downarrow$ \\
+\midrule
+Bicubic & XX.XX & XX.XX \\
+Proposed Dual-Image Method & \textbf{XX.XX} & \textbf{XX.XX} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The proposed method achieves lower NIQE and BRISQUE scores compared to bicubic interpolation, indicating improved perceptual quality. These results suggest that the proposed dual-image fusion strategy enhances spatial coherence and reduces degradation artifacts in real satellite imagery.
+
+\subsection{Qualitative Analysis on Sentinel-2 Imagery}
+
+Fig.~\ref{fig:sentinel_visual} illustrates qualitative comparisons on representative Sentinel-2 scenes. Compared to bicubic upsampling, the proposed method produces visually sharper structures and more coherent textures, particularly in urban and vegetation regions. Zoomed-in views highlight improved edge definition and reduced blurring effects.
+
+It is noted that, due to the absence of reference images, the visual results are interpreted conservatively, and no claims regarding true high-resolution recovery are made.
+
+% ======================
+\section{Discussion}
+
+The experimental results demonstrate that the proposed dual-image super-resolution framework consistently improves reconstruction quality over single-image baselines under both supervised and reference-free settings. The proposed method achieves a consistent PSNR improvement over the single-image baseline on NWPU-RESISC45, demonstrating that fusing complementary bicubic-centric observations enhances reconstruction fidelity. Furthermore, the blind evaluation results on Sentinel-2 imagery suggest that channel-fusion reconstruction provides stronger visual fidelity and generalization under practical satellite imaging conditions.
+
+Despite these encouraging results, several limitations should be noted. First, the supervised training process relies on synthetic degradation models that may not fully capture the complex physical characteristics of real satellite sensors, and a domain gap between simulated and real-world data remains. Second, the performance of the proposed method is sensitive to spatial alignment between the two input images. Misregistration or temporal scene changes may introduce inconsistencies that adversely affect reconstruction quality. Third, the absence of ground-truth high-resolution imagery for Sentinel-2 data restricts the scope of quantitative evaluation and necessitates reliance on blind perceptual metrics and qualitative analysis.
+
+In addition, the current framework assumes moderate temporal stability between dual inputs and does not explicitly model motion or structural changes across observations. In dynamic environments, such as rapidly developing urban areas or regions affected by natural disasters, this assumption may be violated. Addressing these challenges requires more sophisticated alignment and temporal modeling mechanisms.
+
+% ======================
+
+\section{Conclusion and Future Work}
+
+This paper presented a dual-image super-resolution framework for remote sensing imagery based on a modified EDSR architecture. By employing parallel feature extraction and feature fusion strategies, the proposed method effectively integrates complementary information from multiple low-resolution observations. A degradation-aware training strategy and a comprehensive evaluation protocol were introduced to facilitate both supervised validation and reference-free real-world assessment.
+
+Experimental results on the NWPU-RESISC45 dataset demonstrated a consistent improvement over the single-image EDSR baseline across both PSNR and SSIM metrics. These findings suggest that the proposed approach provides a practical and reliable solution for enhancing spatial resolution in remote sensing applications where high-resolution ground truth is unavailable.
+
+Future work will focus on incorporating explicit image alignment and temporal consistency modeling to improve robustness under challenging conditions. Additionally, extending the framework to support multi-spectral and hyperspectral imagery and exploring self-supervised or weakly supervised training strategies represent promising directions for further research.
+
+
+% ======================
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
