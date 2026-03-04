@@ -32,7 +32,7 @@ training:
   learning_rate: 0.0001
   weight_decay: 0
   grad_clip: 1.0    # Max gradient norm; prevents occasional bad batch from corrupting weights
-  amp: true         # Automatic Mixed Precision — ~1.5–2× GPU speedup, no accuracy trade-off
+  amp: true
 
   # Loss weights
   l1_weight: 1.0
@@ -54,8 +54,8 @@ training:
 # Checkpoints
 checkpoint:
   save_dir: "checkpoints"
-  save_every: 10
   keep_best: true
+  # Saves: dual/dual_edsr_best.pth (best), dual/dual_edsr_resume.pth (latest, for crash recovery)
 
 # Logging
 logging:

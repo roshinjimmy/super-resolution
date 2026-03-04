@@ -34,8 +34,8 @@ from utils.metrics import calculate_psnr, calculate_ssim
 
 # ── constants ───────────────────────────────────────────────────────────────
 CONFIG_PATH         = _HERE / "config" / "config.yaml"
-DEFAULT_DUAL_CKPT   = _HERE / "checkpoints" / "dual_edsr_best.pth"
-DEFAULT_SINGLE_CKPT = _HERE / "checkpoints" / "single_edsr_best.pth"
+DEFAULT_DUAL_CKPT   = _HERE / "checkpoints" / "dual"   / "dual_edsr_best.pth"
+DEFAULT_SINGLE_CKPT = _HERE / "checkpoints" / "single" / "single_edsr_best.pth"
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────

@@ -19,7 +19,7 @@ import yaml
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
-from torch.utils.tensorboard import SummaryWriter
+import csv
 from tqdm import tqdm
 from PIL import Image
 import torchvision.transforms as transforms
@@ -216,14 +216,15 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
     grad_clip = train_cfg.get('grad_clip', 0.0)
 
     # Checkpointing / logging
-    ckpt_dir = Path(ckpt_cfg.get('save_dir', 'checkpoints'))
+    ckpt_dir = Path(ckpt_cfg.get('save_dir', 'checkpoints')) / 'single'
     ckpt_dir.mkdir(parents=True, exist_ok=True)
-    save_every = ckpt_cfg.get('save_every', 10)
 
-    writer = None
-    if log_cfg.get('use_tensorboard', True):
-        log_dir = Path(log_cfg.get('log_dir', 'logs')) / f'single_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-        writer = SummaryWriter(log_dir)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    csv_log_path = Path(log_cfg.get('log_dir', 'logs')) / f'single_edsr_log_{timestamp}.csv'
+    csv_log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(csv_log_path, 'w', newline='') as f:
+        csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss',
+                                 'Val PSNR (dB)', 'Val SSIM', 'LR', 'Best'])
 
     best_psnr = 0.0
     best_ssim = 0.0
@@ -298,12 +299,6 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
 
         scheduler.step(val_psnr)
 
-        if writer:
-            writer.add_scalar('Loss/train', train_loss, epoch)
-            writer.add_scalar('Loss/val',   val_loss,   epoch)
-            writer.add_scalar('Metrics/val_PSNR', val_psnr, epoch)
-            writer.add_scalar('Metrics/val_SSIM', val_ssim, epoch)
-
         # Best tracking
         is_best_psnr = val_psnr > best_psnr + es_delta
         is_best_ssim = val_ssim > best_ssim
@@ -325,27 +320,39 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
             if scaler:
                 ckpt['scaler_state_dict'] = scaler.state_dict()
             torch.save(ckpt, ckpt_dir / 'single_edsr_best.pth')
+            print(f'  New best model saved! PSNR: {best_psnr:.2f} dB')
         else:
             epochs_no_improve += 1
         if is_best_ssim:
             best_ssim = val_ssim
             best_ssim_epoch = epoch + 1
 
-        if (epoch + 1) % save_every == 0:
-            periodic_ckpt = {
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
-                'best_psnr': best_psnr,
-                'best_ssim': best_ssim,
-                'best_psnr_epoch': best_psnr_epoch,
-                'best_ssim_epoch': best_ssim_epoch,
-                'epochs_no_improve': epochs_no_improve,
-            }
-            if scaler:
-                periodic_ckpt['scaler_state_dict'] = scaler.state_dict()
-            torch.save(periodic_ckpt, ckpt_dir / f'single_checkpoint_epoch_{epoch+1}.pth')
+        # Always save resume checkpoint (overwrites each epoch)
+        resume_ckpt = {
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+            'best_psnr': best_psnr,
+            'best_ssim': best_ssim,
+            'best_psnr_epoch': best_psnr_epoch,
+            'best_ssim_epoch': best_ssim_epoch,
+            'epochs_no_improve': epochs_no_improve,
+        }
+        if scaler:
+            resume_ckpt['scaler_state_dict'] = scaler.state_dict()
+        torch.save(resume_ckpt, ckpt_dir / 'single_edsr_resume.pth')
+
+        # CSV row
+        lr_now = optimizer.param_groups[0]['lr']
+        best_flag = ('PSNR ' if is_best_psnr else '') + ('SSIM' if is_best_ssim else '')
+        with open(csv_log_path, 'a', newline='') as f:
+            csv.writer(f).writerow([
+                epoch + 1,
+                f'{train_loss:.6f}', f'{val_loss:.6f}',
+                f'{val_psnr:.2f}',   f'{val_ssim:.4f}',
+                f'{lr_now:.2e}',     best_flag.strip()
+            ])
 
         psnr_mark = ' ← best PSNR' if is_best_psnr else ''
         ssim_mark = ' ← best SSIM' if is_best_ssim else ''
@@ -357,9 +364,7 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
             print(f'\nEarly stopping after {es_patience} epochs without improvement.')
             break
 
-    if writer:
-        writer.close()
-
+    print(f'\n  CSV log saved → {csv_log_path}')
     print('\n' + '=' * 50)
     print('SINGLE-EDSR TRAINING COMPLETE')
     print('=' * 50)

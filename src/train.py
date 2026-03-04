@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+import csv
 from tqdm import tqdm
 
 # Add project root to path
@@ -93,20 +93,20 @@ class Trainer:
 
         # Checkpointing
         checkpoint_config = config.get('checkpoint', {})
-        self.checkpoint_dir = Path(checkpoint_config.get('save_dir', 'checkpoints'))
+        self.checkpoint_dir = Path(checkpoint_config.get('save_dir', 'checkpoints')) / 'dual'
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        self.save_every = checkpoint_config.get('save_every', 10)
         
         # Logging
         log_config = config.get('logging', {})
         self.log_dir = Path(log_config.get('log_dir', 'logs'))
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
-        if log_config.get('use_tensorboard', True):
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            self.writer = SummaryWriter(self.log_dir / f'run_{timestamp}')
-        else:
-            self.writer = None
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.csv_path = self.log_dir / f'dual_edsr_log_{timestamp}.csv'
+        with open(self.csv_path, 'w', newline='') as f:
+            w = csv.writer(f)
+            w.writerow(['Epoch', 'Train Loss', 'Train PSNR (dB)', 'Train SSIM',
+                        'Val Loss', 'Val PSNR (dB)', 'Val SSIM', 'LR', 'Best'])
         
         self.log_every = log_config.get('log_every', 100)
         
@@ -215,8 +215,8 @@ class Trainer:
         
         return avg_loss, avg_psnr, avg_ssim
     
-    def save_checkpoint(self, filename: str, is_best: bool = False):
-        """Save model checkpoint."""
+    def save_checkpoint(self, is_best: bool = False):
+        """Save checkpoints: resume.pth every epoch, best.pth only on improvement."""
         checkpoint = {
             'epoch': self.current_epoch,
             'global_step': self.global_step,
@@ -232,13 +232,10 @@ class Trainer:
         }
         if self.scaler:
             checkpoint['scaler_state_dict'] = self.scaler.state_dict()
-        
-        path = self.checkpoint_dir / filename
-        torch.save(checkpoint, path)
-        
+        # Always overwrite resume checkpoint for crash recovery
+        torch.save(checkpoint, self.checkpoint_dir / 'dual_edsr_resume.pth')
         if is_best:
-            best_path = self.checkpoint_dir / 'dual_edsr_best.pth'
-            torch.save(checkpoint, best_path)
+            torch.save(checkpoint, self.checkpoint_dir / 'dual_edsr_best.pth')
             print(f'  New best model saved! PSNR: {self.best_psnr:.2f} dB')
     
     def load_checkpoint(self, checkpoint_path: str):
@@ -284,15 +281,6 @@ class Trainer:
             # Update scheduler
             self.scheduler.step(val_psnr)
             
-            # Log to tensorboard
-            if self.writer:
-                self.writer.add_scalar('Loss/train_epoch', train_loss, epoch)
-                self.writer.add_scalar('Loss/val', val_loss, epoch)
-                self.writer.add_scalar('Metrics/train_PSNR', train_psnr, epoch)
-                self.writer.add_scalar('Metrics/train_SSIM', train_ssim, epoch)
-                self.writer.add_scalar('Metrics/val_PSNR', val_psnr, epoch)
-                self.writer.add_scalar('Metrics/val_SSIM', val_ssim, epoch)
-            
             # Check for improvement
             is_best_psnr = val_psnr > self.best_psnr + self.early_stopping_min_delta
             is_best_ssim = val_ssim > self.best_ssim
@@ -310,10 +298,18 @@ class Trainer:
                 self.best_ssim_epoch = epoch + 1
             
             # Save checkpoint
-            if (epoch + 1) % self.save_every == 0:
-                self.save_checkpoint(f'checkpoint_epoch_{epoch+1}.pth', is_best)
-            elif is_best:
-                self.save_checkpoint('best_model.pth', is_best=True)
+            self.save_checkpoint(is_best=is_best)
+
+            # Write CSV row
+            lr_now = self.optimizer.param_groups[0]['lr']
+            best_flag = ('PSNR ' if is_best_psnr else '') + ('SSIM' if is_best_ssim else '')
+            with open(self.csv_path, 'a', newline='') as f:
+                csv.writer(f).writerow([
+                    epoch + 1,
+                    f'{train_loss:.6f}', f'{train_psnr:.2f}', f'{train_ssim:.4f}',
+                    f'{val_loss:.6f}',   f'{val_psnr:.2f}',   f'{val_ssim:.4f}',
+                    f'{lr_now:.2e}',     best_flag.strip()
+                ])
 
             # Print epoch summary
             elapsed = time.time() - start_time
@@ -328,13 +324,8 @@ class Trainer:
             if self.epochs_without_improvement >= self.early_stopping_patience:
                 print(f'\nEarly stopping triggered after {self.early_stopping_patience} epochs without improvement')
                 break
-        
-        # Save final model
-        self.save_checkpoint('final_model.pth')
-        
-        if self.writer:
-            self.writer.close()
-        
+
+        print(f'\n  CSV log saved → {self.csv_path}')
         print('\n' + '=' * 50)
         print('TRAINING COMPLETE — Best Validation Results')
         print('=' * 50)
