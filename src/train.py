@@ -167,13 +167,6 @@ class Trainer:
                     total_psnr += calculate_psnr(sr_clamped[i], hr[i])
                     total_ssim += calculate_ssim(sr_clamped[i], hr[i])
             
-            # Log to tensorboard
-            if self.writer and self.global_step % self.log_every == 0:
-                self.writer.add_scalar('Loss/train', loss.item(), self.global_step)
-                self.writer.add_scalar(
-                    'LR', self.optimizer.param_groups[0]['lr'], self.global_step
-                )
-            
             pbar.set_postfix({'loss': f'{loss.item():.4f}'})
         
         n_samples = len(self.train_loader.dataset)
