@@ -15,6 +15,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 
+import time
 import yaml
 import torch
 import torch.optim as optim
@@ -223,8 +224,8 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
     csv_log_path = Path(log_cfg.get('log_dir', 'logs')) / f'single_edsr_log_{timestamp}.csv'
     csv_log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(csv_log_path, 'w', newline='') as f:
-        csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss',
-                                 'Val PSNR (dB)', 'Val SSIM', 'LR', 'Best'])
+        csv.writer(f).writerow(['Epoch', 'Train Loss', 'Train PSNR (dB)', 'Train SSIM',
+                                 'Val Loss', 'Val PSNR (dB)', 'Val SSIM', 'LR', 'Best'])
 
     best_psnr = 0.0
     best_ssim = 0.0
@@ -257,9 +258,12 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
     print('-' * 50)
 
     for epoch in range(start_epoch, epochs):
+        epoch_start = time.time()
         # ---- Train ----
         model.train()
         total_loss = 0.0
+        total_train_psnr = 0.0
+        total_train_ssim = 0.0
         for lr_img, hr_img in tqdm(train_loader, desc=f'Epoch {epoch+1}'):
             lr_img, hr_img = lr_img.to(device), hr_img.to(device)
             optimizer.zero_grad(set_to_none=True)
@@ -279,7 +283,15 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
                     torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
                 optimizer.step()
             total_loss += loss.item()
+            with torch.no_grad():
+                sr_c = sr.clamp(0, 1)
+                for i in range(sr_c.size(0)):
+                    total_train_psnr += calculate_psnr(sr_c[i], hr_img[i])
+                    total_train_ssim += calculate_ssim(sr_c[i], hr_img[i])
+        n_train_samples = len(train_ds)
         train_loss = total_loss / len(train_loader)
+        train_psnr = total_train_psnr / n_train_samples
+        train_ssim = total_train_ssim / n_train_samples
 
         # ---- Validate ----
         model.eval()
@@ -349,16 +361,32 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
         with open(csv_log_path, 'a', newline='') as f:
             csv.writer(f).writerow([
                 epoch + 1,
-                f'{train_loss:.6f}', f'{val_loss:.6f}',
-                f'{val_psnr:.2f}',   f'{val_ssim:.4f}',
+                f'{train_loss:.6f}', f'{train_psnr:.2f}', f'{train_ssim:.4f}',
+                f'{val_loss:.6f}',   f'{val_psnr:.2f}',   f'{val_ssim:.4f}',
                 f'{lr_now:.2e}',     best_flag.strip()
             ])
 
-        psnr_mark = ' ← best PSNR' if is_best_psnr else ''
-        ssim_mark = ' ← best SSIM' if is_best_ssim else ''
-        print(f'Epoch {epoch+1}/{epochs}  LR: {optimizer.param_groups[0]["lr"]:.2e}')
-        print(f'  Train Loss: {train_loss:.4f}')
-        print(f'  Val   Loss: {val_loss:.4f} | PSNR: {val_psnr:.2f} dB{psnr_mark} | SSIM: {val_ssim:.4f}{ssim_mark}')
+        elapsed = time.time() - epoch_start
+        eta_s = elapsed * (epochs - epoch - 1)
+        eta_str = f'{int(eta_s // 3600)}h {int((eta_s % 3600) // 60)}m' if eta_s >= 60 else f'{int(eta_s)}s'
+        lr_now = optimizer.param_groups[0]['lr']
+        saved_str = '  Checkpoint saved  ✔' if is_best_psnr else '  No checkpoint saved'
+        W = 62
+        print(f'\n{"═"*W}')
+        print(f'  Epoch {epoch+1}/{epochs}   ({elapsed:.0f}s elapsed, ~{eta_str} remaining)   LR: {lr_now:.2e}')
+        print(f'{"─"*W}')
+        print(f'  {"":20s}  {"Loss":>8}    {"PSNR":>8}    {"SSIM":>8}')
+        print(f'  {"─"*20}  {"─"*8}    {"─"*8}    {"─"*8}')
+        print(f'  {"Training":20s}  {train_loss:>8.4f}    {train_psnr:>6.2f} dB    {train_ssim:>8.4f}')
+        print(f'  {"Validation":20s}  {val_loss:>8.4f}    {val_psnr:>6.2f} dB    {val_ssim:>8.4f}')
+        print(f'{"─"*W}')
+        print(f'  All-time best →   PSNR: {best_psnr:.2f} dB  (epoch {best_psnr_epoch})    SSIM: {best_ssim:.4f}  (epoch {best_ssim_epoch})')
+        if epochs_no_improve > 0:
+            remaining_patience = es_patience - epochs_no_improve
+            print(f'  PSNR has not improved for {epochs_no_improve} epoch(s). '
+                  f'Early stop in {remaining_patience} more epoch(s) if no improvement.')
+        print(f'  {saved_str}')
+        print(f'{"═"*W}')
 
         if epochs_no_improve >= es_patience:
             print(f'\nEarly stopping after {es_patience} epochs without improvement.')

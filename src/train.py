@@ -306,12 +306,29 @@ class Trainer:
 
             # Print epoch summary
             elapsed = time.time() - start_time
-            best_marker_psnr = ' ← best PSNR' if is_best_psnr else ''
-            best_marker_ssim = ' ← best SSIM' if is_best_ssim else ''
-            print(f'Epoch {epoch+1}/{num_epochs} ({elapsed:.1f}s)')
-            print(f'  Train Loss: {train_loss:.4f} | PSNR: {train_psnr:.2f} dB | SSIM: {train_ssim:.4f}')
-            print(f'  Val   Loss: {val_loss:.4f} | PSNR: {val_psnr:.2f} dB{best_marker_psnr} | SSIM: {val_ssim:.4f}{best_marker_ssim}')
-            print(f'  LR: {self.optimizer.param_groups[0]["lr"]:.2e}')
+            eta_s = elapsed * (num_epochs - epoch - 1)
+            eta_str = f'{int(eta_s // 3600)}h {int((eta_s % 3600) // 60)}m' if eta_s >= 60 else f'{int(eta_s)}s'
+            lr_now = self.optimizer.param_groups[0]['lr']
+
+            W = 62
+            print(f'\n{"═"*W}')
+            print(f'  Epoch {epoch+1}/{num_epochs}   ({elapsed:.0f}s elapsed, ~{eta_str} remaining)   LR: {lr_now:.2e}')
+            print(f'{"─"*W}')
+            print(f'  {"":20s}  {"Loss":>8}    {"PSNR":>8}    {"SSIM":>8}')
+            print(f'  {"─"*20}  {"─"*8}    {"─"*8}    {"─"*8}')
+            print(f'  {"Training":20s}  {train_loss:>8.4f}    {train_psnr:>6.2f} dB    {train_ssim:>8.4f}')
+            print(f'  {"Validation":20s}  {val_loss:>8.4f}    {val_psnr:>6.2f} dB    {val_ssim:>8.4f}')
+            print(f'{"─"*W}')
+            saved_str = '  Checkpoint saved  ✔' if is_best_psnr else '  No checkpoint saved'
+            psnr_status = f'PSNR: {self.best_psnr:.2f} dB  (epoch {self.best_psnr_epoch})'
+            ssim_status = f'SSIM: {self.best_ssim:.4f}  (epoch {self.best_ssim_epoch})'
+            print(f'  All-time best →   {psnr_status}    {ssim_status}')
+            if self.epochs_without_improvement > 0:
+                remaining_patience = self.early_stopping_patience - self.epochs_without_improvement
+                print(f'  PSNR has not improved for {self.epochs_without_improvement} epoch(s). '
+                      f'Early stop in {remaining_patience} more epoch(s) if no improvement.')
+            print(f'  {saved_str}')
+            print(f'{"═"*W}')
             
             # Early stopping
             if self.epochs_without_improvement >= self.early_stopping_patience:
