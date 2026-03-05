@@ -31,7 +31,7 @@ training:
   epochs: 100
   learning_rate: 0.0001
   weight_decay: 0
-  grad_clip: 1.0    # Max gradient norm; prevents occasional bad batch from corrupting weights
+  grad_clip: 0.5
   amp: true
 
   # Loss weights

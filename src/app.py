@@ -30,7 +30,7 @@ _HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE))
 
 from models.dual_edsr import DualEDSR, SingleEDSR
-from utils.metrics import calculate_psnr, calculate_ssim
+from utils.metrics import calculate_psnr, calculate_ssim, calculate_niqe, calculate_brisque
 
 # ── constants ───────────────────────────────────────────────────────────────
 CONFIG_PATH         = _HERE / "config" / "config.yaml"
@@ -194,147 +194,258 @@ with st.sidebar:
         "Run `train.py` and `train_single.py` first to generate them."
     )
 
-# ── file upload ───────────────────────────────────────────────────────────────
-uploaded = st.file_uploader(
-    "Upload HR image (PNG / JPG / TIFF — treated as ground truth)",
-    type=["png", "jpg", "jpeg", "tif", "tiff"],
-)
+# ── tabs ─────────────────────────────────────────────────────────────────────
+tab_eval, tab_blind = st.tabs(["📐 Full-Reference Evaluation", "🔍 Blind Evaluation (Sentinel-2)"])
 
-if uploaded is None:
-    st.info("👆 Upload an image to start.")
-    st.stop()
-
-# ── load & crop HR ─────────────────────────────────────────────────────────
-hr_pil = Image.open(io.BytesIO(uploaded.read())).convert("RGB")
-w, h   = hr_pil.size
-w_crop = (w // scale) * scale
-h_crop = (h // scale) * scale
-hr_pil = hr_pil.crop((0, 0, w_crop, h_crop))
-
-st.success(
-    f"Loaded **{uploaded.name}** — {w_crop}×{h_crop} px  →  "
-    f"LR size: {w_crop//scale}×{h_crop//scale} px  (×{scale})"
-)
-
-# ── synthesise LR pair ───────────────────────────────────────────────────────
-lr1_pil, lr2_pil = synthesise_lr_pair(hr_pil, scale=scale, blur_sigma=blur_sigma)
-
-# ── show inputs ──────────────────────────────────────────────────────────────
-st.subheader("Inputs")
-c1, c2, c3 = st.columns(3)
-with c1:
-    st.image(hr_pil,  caption="HR — ground truth", use_container_width=True)
-with c2:
-    st.image(lr1_pil, caption=f"LR1 — bicubic ÷{scale}", use_container_width=True)
-with c3:
-    st.image(lr2_pil, caption=f"LR2 — Gaussian(σ={blur_sigma:.1f}) + bicubic ÷{scale}",
-             use_container_width=True)
-
-st.markdown("---")
-
-# ── checkpoint validation + run buttons ──────────────────────────────────────
-dual_ckpt_path   = Path(dual_ckpt_input)
-single_ckpt_path = Path(single_ckpt_input)
-
-if not single_ckpt_path.exists():
-    st.warning(f"Single-EDSR checkpoint not found: `{single_ckpt_path}`")
-if not dual_ckpt_path.exists():
-    st.warning(f"Dual-EDSR checkpoint not found: `{dual_ckpt_path}`")
-
-bc1, bc2 = st.columns(2)
-with bc1:
-    run_single_flag = st.button(
-        "▶ Run Single-EDSR",
-        disabled=not single_ckpt_path.exists(),
-        use_container_width=True,
-    )
-with bc2:
-    run_dual_flag = st.button(
-        "▶ Run Dual-EDSR",
-        disabled=not dual_ckpt_path.exists(),
-        use_container_width=True,
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 1 — Full-Reference Evaluation
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_eval:
+    st.markdown(
+        "Upload a **high-resolution image** as ground truth. "
+        "The app synthesises LR1 (bicubic ÷4) and LR2 (Gaussian + bicubic ÷4) "
+        "and compares Bicubic / Single-EDSR / Dual-EDSR."
     )
 
-# ── session state ─────────────────────────────────────────────────────────────
-for key in ("single_result", "dual_result", "prev_upload"):
-    if key not in st.session_state:
-        st.session_state[key] = None
+    # ── file upload ───────────────────────────────────────────────────────────
+    uploaded = st.file_uploader(
+        "Upload HR image (PNG / JPG / TIFF)",
+        type=["png", "jpg", "jpeg", "tif", "tiff"],
+        key="hr_upload",
+    )
 
-# Reset when new image is uploaded
-if st.session_state["prev_upload"] != uploaded.name:
-    st.session_state["single_result"] = None
-    st.session_state["dual_result"]   = None
-    st.session_state["prev_upload"]   = uploaded.name
+    if uploaded is None:
+        st.info("👆 Upload an HR image to start.")
+    else:
+        hr_pil = Image.open(io.BytesIO(uploaded.read())).convert("RGB")
+        w, h   = hr_pil.size
+        w_crop = (w // scale) * scale
+        h_crop = (h // scale) * scale
+        hr_pil = hr_pil.crop((0, 0, w_crop, h_crop))
 
-if run_single_flag:
-    with st.spinner("Running Single-EDSR…"):
-        m  = load_single_model(str(single_ckpt_path), config, device_str)
-        sr = run_single(m, lr1_pil, device_str)
-        st.session_state["single_result"] = (sr, *compute_metrics(sr, hr_pil))
+        st.success(
+            f"Loaded **{uploaded.name}** — {w_crop}×{h_crop} px  →  "
+            f"LR size: {w_crop//scale}×{h_crop//scale} px  (×{scale})"
+        )
 
-if run_dual_flag:
-    with st.spinner("Running Dual-EDSR…"):
-        m  = load_dual_model(str(dual_ckpt_path), config, device_str)
-        sr = run_dual(m, lr1_pil, lr2_pil, device_str)
-        st.session_state["dual_result"] = (sr, *compute_metrics(sr, hr_pil))
+        lr1_pil, lr2_pil = synthesise_lr_pair(hr_pil, scale=scale, blur_sigma=blur_sigma)
 
-# ── bicubic baseline (always shown) ──────────────────────────────────────────
-bic_pil             = bicubic_up(lr1_pil, scale=scale)
-psnr_bic, ssim_bic  = compute_metrics(bic_pil, hr_pil)
+        st.subheader("Inputs")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.image(hr_pil,  caption="HR — ground truth", use_container_width=True)
+        with c2:
+            st.image(lr1_pil, caption=f"LR1 — bicubic ÷{scale}", use_container_width=True)
+        with c3:
+            st.image(lr2_pil, caption=f"LR2 — Gaussian(σ={blur_sigma:.1f}) + bicubic ÷{scale}",
+                     use_container_width=True)
 
-# ── results panel ─────────────────────────────────────────────────────────────
-st.subheader("Results")
+        st.markdown("---")
 
-have_single = st.session_state["single_result"] is not None
-have_dual   = st.session_state["dual_result"]   is not None
-num_cols    = 1 + int(have_single) + int(have_dual)
-cols        = st.columns(num_cols)
-col_i       = 0
+        dual_ckpt_path   = Path(dual_ckpt_input)
+        single_ckpt_path = Path(single_ckpt_input)
 
-with cols[col_i]:
-    st.image(bic_pil, caption="Bicubic (LR1 upscaled)", use_container_width=True)
-    metric_html("Bicubic baseline", psnr_bic, ssim_bic)
-col_i += 1
+        if not single_ckpt_path.exists():
+            st.warning(f"Single-EDSR checkpoint not found: `{single_ckpt_path}`")
+        if not dual_ckpt_path.exists():
+            st.warning(f"Dual-EDSR checkpoint not found: `{dual_ckpt_path}`")
 
-if have_single:
-    sr, p, s = st.session_state["single_result"]
-    with cols[col_i]:
-        st.image(sr, caption="Single-EDSR (LR1 only)", use_container_width=True)
-        metric_html("Single-EDSR", p, s, delta_p=p - psnr_bic)
-    col_i += 1
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            run_single_flag = st.button("▶ Run Single-EDSR", disabled=not single_ckpt_path.exists(),
+                                        use_container_width=True, key="btn_single")
+        with bc2:
+            run_dual_flag = st.button("▶ Run Dual-EDSR", disabled=not dual_ckpt_path.exists(),
+                                      use_container_width=True, key="btn_dual")
 
-if have_dual:
-    sr, p, s = st.session_state["dual_result"]
-    with cols[col_i]:
-        st.image(sr, caption="Dual-EDSR (LR1 + LR2)", use_container_width=True)
-        metric_html("Dual-EDSR", p, s, delta_p=p - psnr_bic)
+        for key in ("single_result", "dual_result", "prev_upload"):
+            if key not in st.session_state:
+                st.session_state[key] = None
 
-# ── summary table & downloads (once both models have run) ────────────────────
-if have_single and have_dual:
-    import pandas as pd
+        if st.session_state["prev_upload"] != uploaded.name:
+            st.session_state["single_result"] = None
+            st.session_state["dual_result"]   = None
+            st.session_state["prev_upload"]   = uploaded.name
 
-    _, p_sgl, s_sgl   = st.session_state["single_result"]
-    _, p_dual, s_dual = st.session_state["dual_result"]
+        if run_single_flag:
+            with st.spinner("Running Single-EDSR…"):
+                m  = load_single_model(str(single_ckpt_path), config, device_str)
+                sr = run_single(m, lr1_pil, device_str)
+                st.session_state["single_result"] = (sr, *compute_metrics(sr, hr_pil))
 
-    df = pd.DataFrame({
-        "Method":    ["Bicubic", "Single-EDSR", "Dual-EDSR"],
-        "PSNR (dB)": [f"{psnr_bic:.2f}", f"{p_sgl:.2f}", f"{p_dual:.2f}"],
-        "SSIM":      [f"{ssim_bic:.4f}", f"{s_sgl:.4f}", f"{s_dual:.4f}"],
-        "ΔPSNR":     ["—", f"{p_sgl-psnr_bic:+.2f}", f"{p_dual-psnr_bic:+.2f}"],
-        "ΔSSIM":     ["—", f"{s_sgl-ssim_bic:+.4f}", f"{s_dual-ssim_bic:+.4f}"],
-    })
+        if run_dual_flag:
+            with st.spinner("Running Dual-EDSR…"):
+                m  = load_dual_model(str(dual_ckpt_path), config, device_str)
+                sr = run_dual(m, lr1_pil, lr2_pil, device_str)
+                st.session_state["dual_result"] = (sr, *compute_metrics(sr, hr_pil))
 
-    st.markdown("---")
-    st.subheader("📊 Comparison Summary")
-    st.dataframe(df, hide_index=True, use_container_width=True)
+        bic_pil            = bicubic_up(lr1_pil, scale=scale)
+        psnr_bic, ssim_bic = compute_metrics(bic_pil, hr_pil)
 
-    st.subheader("⬇️ Download Outputs")
-    dc1, dc2, dc3 = st.columns(3)
-    with dc1:
-        st.download_button("Bicubic SR",     pil_to_bytes(bic_pil), "bicubic_sr.png",      "image/png")
-    with dc2:
-        sr_sgl, _, _ = st.session_state["single_result"]
-        st.download_button("Single-EDSR SR", pil_to_bytes(sr_sgl),  "single_edsr_sr.png",  "image/png")
-    with dc3:
-        sr_dual, _, _ = st.session_state["dual_result"]
-        st.download_button("Dual-EDSR SR",   pil_to_bytes(sr_dual), "dual_edsr_sr.png",    "image/png")
+        st.subheader("Results")
+
+        have_single = st.session_state["single_result"] is not None
+        have_dual   = st.session_state["dual_result"]   is not None
+        num_cols    = 1 + int(have_single) + int(have_dual)
+        cols        = st.columns(num_cols)
+        col_i       = 0
+
+        with cols[col_i]:
+            st.image(bic_pil, caption="Bicubic (LR1 upscaled)", use_container_width=True)
+            metric_html("Bicubic baseline", psnr_bic, ssim_bic)
+        col_i += 1
+
+        if have_single:
+            sr, p, s = st.session_state["single_result"]
+            with cols[col_i]:
+                st.image(sr, caption="Single-EDSR (LR1 only)", use_container_width=True)
+                metric_html("Single-EDSR", p, s, delta_p=p - psnr_bic)
+            col_i += 1
+
+        if have_dual:
+            sr, p, s = st.session_state["dual_result"]
+            with cols[col_i]:
+                st.image(sr, caption="Dual-EDSR (LR1 + LR2)", use_container_width=True)
+                metric_html("Dual-EDSR", p, s, delta_p=p - psnr_bic)
+
+        if have_single and have_dual:
+            import pandas as pd
+            _, p_sgl, s_sgl   = st.session_state["single_result"]
+            _, p_dual, s_dual = st.session_state["dual_result"]
+
+            df = pd.DataFrame({
+                "Method":    ["Bicubic", "Single-EDSR", "Dual-EDSR"],
+                "PSNR (dB)": [f"{psnr_bic:.2f}", f"{p_sgl:.2f}", f"{p_dual:.2f}"],
+                "SSIM":      [f"{ssim_bic:.4f}", f"{s_sgl:.4f}", f"{s_dual:.4f}"],
+                "ΔPSNR":     ["—", f"{p_sgl-psnr_bic:+.2f}", f"{p_dual-psnr_bic:+.2f}"],
+                "ΔSSIM":     ["—", f"{s_sgl-ssim_bic:+.4f}", f"{s_dual-ssim_bic:+.4f}"],
+            })
+
+            st.markdown("---")
+            st.subheader("📊 Comparison Summary")
+            st.dataframe(df, hide_index=True, use_container_width=True)
+
+            st.subheader("⬇️ Download Outputs")
+            dc1, dc2, dc3 = st.columns(3)
+            with dc1:
+                st.download_button("Bicubic SR",     pil_to_bytes(bic_pil), "bicubic_sr.png",     "image/png")
+            with dc2:
+                sr_sgl, _, _ = st.session_state["single_result"]
+                st.download_button("Single-EDSR SR", pil_to_bytes(sr_sgl),  "single_edsr_sr.png", "image/png")
+            with dc3:
+                sr_dual, _, _ = st.session_state["dual_result"]
+                st.download_button("Dual-EDSR SR",   pil_to_bytes(sr_dual), "dual_edsr_sr.png",   "image/png")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 2 — Blind Evaluation (Sentinel-2 / no ground truth)
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_blind:
+    st.markdown(
+        "Upload **two real LR images** of the same scene (e.g. two Sentinel-2 acquisitions "
+        "on different dates). No ground truth needed — quality is assessed using "
+        "**NIQE** and **BRISQUE** (lower = better)."
+    )
+
+    dual_ckpt_path_blind = Path(dual_ckpt_input)
+    if not dual_ckpt_path_blind.exists():
+        st.warning(f"Dual-EDSR checkpoint not found: `{dual_ckpt_path_blind}`")
+
+    b1, b2 = st.columns(2)
+    with b1:
+        up_lr1 = st.file_uploader("Upload LR1 (first acquisition)", type=["png","jpg","jpeg","tif","tiff"], key="blind_lr1")
+    with b2:
+        up_lr2 = st.file_uploader("Upload LR2 (second acquisition)", type=["png","jpg","jpeg","tif","tiff"], key="blind_lr2")
+
+    if up_lr1 is None or up_lr2 is None:
+        st.info("👆 Upload both LR images to start.")
+    else:
+        lr1_blind = Image.open(io.BytesIO(up_lr1.read())).convert("RGB")
+        lr2_blind = Image.open(io.BytesIO(up_lr2.read())).convert("RGB")
+
+        # Ensure same size — crop to minimum common size
+        w = min(lr1_blind.width,  lr2_blind.width)
+        h = min(lr1_blind.height, lr2_blind.height)
+        lr1_blind = lr1_blind.crop((0, 0, w, h))
+        lr2_blind = lr2_blind.crop((0, 0, w, h))
+
+        st.subheader("Uploaded LR Images")
+        ci1, ci2 = st.columns(2)
+        with ci1:
+            st.image(lr1_blind, caption=f"LR1 — {up_lr1.name}", use_container_width=True)
+        with ci2:
+            st.image(lr2_blind, caption=f"LR2 — {up_lr2.name}", use_container_width=True)
+
+        st.markdown("---")
+
+        if st.button("▶ Run Blind Evaluation", disabled=not dual_ckpt_path_blind.exists(),
+                     use_container_width=True, key="btn_blind"):
+            with st.spinner("Running Dual-EDSR and computing blind metrics…"):
+                model_blind = load_dual_model(str(dual_ckpt_path_blind), config, device_str)
+                bic_blind   = bicubic_up(lr1_blind, scale=scale)
+                sr_blind    = run_dual(model_blind, lr1_blind, lr2_blind, device_str)
+
+                lr1_t  = pil_to_tensor(lr1_blind)
+                sr_t   = pil_to_tensor(sr_blind)
+                bic_t  = pil_to_tensor(bic_blind)
+
+                niqe_sr  = calculate_niqe(sr_t[0].cpu())
+                brisq_sr = calculate_brisque(sr_t[0].cpu())
+                niqe_bic  = calculate_niqe(bic_t[0].cpu())
+                brisq_bic = calculate_brisque(bic_t[0].cpu())
+
+                st.session_state["blind_result"] = {
+                    "sr": sr_blind, "bic": bic_blind,
+                    "niqe_sr": niqe_sr, "brisq_sr": brisq_sr,
+                    "niqe_bic": niqe_bic, "brisq_bic": brisq_bic,
+                }
+
+        if "blind_result" in st.session_state and st.session_state["blind_result"]:
+            res = st.session_state["blind_result"]
+
+            st.subheader("Results")
+            rc1, rc2 = st.columns(2)
+            with rc1:
+                st.image(res["bic"], caption="Bicubic upscale of LR1", use_container_width=True)
+                st.markdown(
+                    f"""<div style="background:#1e1e2e;border-radius:8px;padding:10px 16px;margin-top:4px">
+                    <b>Bicubic baseline</b><br/>
+                    <span style="color:#a6e3a1">NIQE <b>{res['niqe_bic']:.3f}</b></span>
+                    &nbsp;&nbsp;
+                    <span style="color:#89dceb">BRISQUE <b>{res['brisq_bic']:.3f}</b></span>
+                    </div>""", unsafe_allow_html=True
+                )
+            with rc2:
+                st.image(res["sr"], caption="Dual-EDSR (LR1 + LR2)", use_container_width=True)
+                dn = res['niqe_bic'] - res['niqe_sr']
+                db = res['brisq_bic'] - res['brisq_sr']
+                color_n = "#a6e3a1" if dn >= 0 else "#f38ba8"
+                color_b = "#a6e3a1" if db >= 0 else "#f38ba8"
+                st.markdown(
+                    f"""<div style="background:#1e1e2e;border-radius:8px;padding:10px 16px;margin-top:4px">
+                    <b>Dual-EDSR</b><br/>
+                    <span style="color:#a6e3a1">NIQE <b>{res['niqe_sr']:.3f}</b></span>
+                    &nbsp; <span style="color:{color_n};font-size:0.85em">(Δ{dn:+.3f} vs bicubic)</span><br/>
+                    <span style="color:#89dceb">BRISQUE <b>{res['brisq_sr']:.3f}</b></span>
+                    &nbsp; <span style="color:{color_b};font-size:0.85em">(Δ{db:+.3f} vs bicubic)</span>
+                    </div>""", unsafe_allow_html=True
+                )
+
+            import pandas as pd
+            df_blind = pd.DataFrame({
+                "Method":  ["Bicubic", "Dual-EDSR (Ours)"],
+                "NIQE ↓":  [f"{res['niqe_bic']:.3f}",  f"{res['niqe_sr']:.3f}"],
+                "BRISQUE ↓": [f"{res['brisq_bic']:.3f}", f"{res['brisq_sr']:.3f}"],
+            })
+            st.markdown("---")
+            st.subheader("📊 Blind Metrics Summary")
+            st.dataframe(df_blind, hide_index=True, use_container_width=True)
+            st.caption("Lower NIQE and BRISQUE indicate better perceptual quality.")
+
+            st.subheader("⬇️ Download Output")
+            dl1, dl2 = st.columns(2)
+            with dl1:
+                st.download_button("Bicubic SR",   pil_to_bytes(res["bic"]), "blind_bicubic_sr.png",   "image/png")
+            with dl2:
+                st.download_button("Dual-EDSR SR", pil_to_bytes(res["sr"]),  "blind_dual_edsr_sr.png", "image/png")
+
