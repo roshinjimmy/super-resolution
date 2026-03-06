@@ -32,13 +32,19 @@ training:
   learning_rate: 0.0001
   weight_decay: 0
   grad_clip: 0.5
-  amp: true
+  amp: false
 
   # Loss weights
   l1_weight: 1.0
   ssim_weight: 0.1
   use_ssim: true
-  
+  perceptual_weight: 0.01
+
+  # LR Warmup (linear ramp from warmup_start_lr to learning_rate)
+  warmup:
+    epochs: 5
+    start_lr: 0.000001
+
   # Scheduler
   scheduler:
     type: "ReduceLROnPlateau"

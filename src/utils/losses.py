@@ -125,42 +125,64 @@ class SSIMLoss(nn.Module):
         return 1 - ssim
 
 
+class PerceptualLoss(nn.Module):
+    """
+    VGG16-based perceptual loss using feature maps at relu3_3 (layer 16).
+    Penalises high-level texture/structure differences that L1 misses.
+    """
+
+    def __init__(self, layer_idx: int = 16):
+        super().__init__()
+        import torchvision.models as models
+        vgg = models.vgg16(weights=models.VGG16_Weights.DEFAULT)
+        self.features = nn.Sequential(*list(vgg.features.children())[:layer_idx]).eval()
+        for param in self.features.parameters():
+            param.requires_grad = False
+        self.register_buffer('mean', torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer('std',  torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        pred_n   = (pred   - self.mean) / self.std
+        target_n = (target - self.mean) / self.std
+        return F.l1_loss(self.features(pred_n), self.features(target_n.detach()))
+
+
 class CombinedLoss(nn.Module):
     """
-    Combined L1 and SSIM loss.
-    
-    Loss = l1_weight * L1 + ssim_weight * (1 - SSIM)
+    Combined L1 + SSIM + optional VGG Perceptual loss.
+    Loss = l1_weight * L1 + ssim_weight * (1 - SSIM) + perceptual_weight * VGG
     """
-    
+
     def __init__(
         self,
         l1_weight: float = 1.0,
         ssim_weight: float = 0.1,
-        use_ssim: bool = True
+        use_ssim: bool = True,
+        perceptual_weight: float = 0.0
     ):
-        """
-        Args:
-            l1_weight: Weight for L1 loss
-            ssim_weight: Weight for SSIM loss
-            use_ssim: Whether to include SSIM loss
-        """
         super().__init__()
-        
+
         self.l1_weight = l1_weight
         self.ssim_weight = ssim_weight
         self.use_ssim = use_ssim
-        
+        self.perceptual_weight = perceptual_weight
+
         self.l1_loss = L1Loss()
         if use_ssim:
             self.ssim_loss = SSIMLoss()
-    
+        if perceptual_weight > 0:
+            self.perceptual_loss = PerceptualLoss()
+
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Calculate combined loss."""
         loss = self.l1_weight * self.l1_loss(pred, target)
-        
+
         if self.use_ssim:
             loss = loss + self.ssim_weight * self.ssim_loss(pred, target)
-        
+
+        if self.perceptual_weight > 0:
+            loss = loss + self.perceptual_weight * self.perceptual_loss(pred, target)
+
         return loss
 
 

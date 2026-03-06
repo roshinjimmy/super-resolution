@@ -60,8 +60,9 @@ class Trainer:
         self.criterion = CombinedLoss(
             l1_weight=train_config.get('l1_weight', 1.0),
             ssim_weight=train_config.get('ssim_weight', 0.1),
-            use_ssim=train_config.get('use_ssim', True)
-        )
+            use_ssim=train_config.get('use_ssim', True),
+            perceptual_weight=train_config.get('perceptual_weight', 0.0)
+        ).to(device)
         
         # Optimizer
         self.optimizer = optim.Adam(
@@ -81,12 +82,11 @@ class Trainer:
             min_lr=scheduler_config.get('min_lr', 1e-6)
         )
 
-        # AMP (Automatic Mixed Precision)
-        self.use_amp = train_config.get('amp', False)
-        self.scaler = (
-            torch.amp.GradScaler('cuda')
-            if (self.use_amp and device.type == 'cuda') else None
-        )
+        # Warmup LR
+        warmup_cfg = train_config.get('warmup', {})
+        self.warmup_epochs = warmup_cfg.get('epochs', 0)
+        self.warmup_start_lr = warmup_cfg.get('start_lr', 1e-6)
+        self._base_lr = train_config['learning_rate']
 
         # Gradient clipping
         self.grad_clip = train_config.get('grad_clip', 0.0)
@@ -130,7 +130,8 @@ class Trainer:
         total_loss = 0
         total_psnr = 0
         total_ssim = 0
-        
+        valid_batches = 0
+
         pbar = tqdm(self.train_loader, desc=f'Epoch {self.current_epoch}')
         for batch_idx, (lr1, lr2, hr) in enumerate(pbar):
             lr1 = lr1.to(self.device)
@@ -139,39 +140,37 @@ class Trainer:
             
             # Forward pass
             self.optimizer.zero_grad(set_to_none=True)
-            with torch.amp.autocast('cuda', enabled=self.scaler is not None):
-                sr = self.model(lr1, lr2)
-                loss = self.criterion(sr, hr)
+            sr = self.model(lr1, lr2)
+            loss = self.criterion(sr, hr)
+
+            # Skip NaN/Inf batches
+            if not torch.isfinite(loss):
+                pbar.set_postfix({'loss': 'NaN — skipped'})
+                continue
 
             # Backward pass
-            if self.scaler:
-                self.scaler.scale(loss).backward()
-                if self.grad_clip > 0:
-                    self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-            else:
-                loss.backward()
-                if self.grad_clip > 0:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
-                self.optimizer.step()
-            
+            loss.backward()
+            if self.grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+            self.optimizer.step()
             total_loss += loss.item()
+            valid_batches += 1
             self.global_step += 1
-            
-            # Calculate train metrics (no grad needed)
+
             with torch.no_grad():
                 sr_clamped = sr.clamp(0, 1)
                 for i in range(sr_clamped.size(0)):
                     total_psnr += calculate_psnr(sr_clamped[i], hr[i])
                     total_ssim += calculate_ssim(sr_clamped[i], hr[i])
-            
+
             pbar.set_postfix({'loss': f'{loss.item():.4f}'})
-        
-        n_samples = len(self.train_loader.dataset)
+
+        if valid_batches == 0:
+            return float('nan'), float('nan'), float('nan')
+
+        n_samples = valid_batches * self.train_loader.batch_size
         return (
-            total_loss / len(self.train_loader),
+            total_loss / valid_batches,
             total_psnr / n_samples,
             total_ssim / n_samples
         )
@@ -223,8 +222,6 @@ class Trainer:
             'epochs_without_improvement': self.epochs_without_improvement,
             'config': self.config
         }
-        if self.scaler:
-            checkpoint['scaler_state_dict'] = self.scaler.state_dict()
         # Always overwrite resume checkpoint for crash recovery
         torch.save(checkpoint, self.checkpoint_dir / 'dual_edsr_resume.pth')
         if is_best:
@@ -238,8 +235,6 @@ class Trainer:
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        if self.scaler and 'scaler_state_dict' in checkpoint:
-            self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
         self.current_epoch = checkpoint['epoch'] + 1
         self.global_step = checkpoint['global_step']
         self.best_psnr = checkpoint.get('best_psnr', 0)
@@ -267,12 +262,23 @@ class Trainer:
             
             # Train
             train_loss, train_psnr, train_ssim = self.train_epoch()
-            
+
+            # Stop immediately if entire epoch produced NaN
+            if train_loss != train_loss:
+                print(f'\n  NaN loss detected — stopping training early.')
+                print(f'  Best checkpoint at epoch {self.best_psnr_epoch} ({self.best_psnr:.4f} dB).')
+                break
+
             # Validate
             val_loss, val_psnr, val_ssim = self.validate()
-            
-            # Update scheduler
-            self.scheduler.step(val_psnr)
+
+            # LR warmup (linear ramp) or ReduceLROnPlateau
+            if epoch < self.warmup_epochs:
+                warmup_lr = self.warmup_start_lr + (self._base_lr - self.warmup_start_lr) * (epoch + 1) / self.warmup_epochs
+                for pg in self.optimizer.param_groups:
+                    pg['lr'] = warmup_lr
+            else:
+                self.scheduler.step(val_psnr)
             
             # Check for improvement
             is_best_psnr = val_psnr > self.best_psnr + self.early_stopping_min_delta

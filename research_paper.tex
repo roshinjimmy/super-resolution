@@ -170,13 +170,13 @@ Following residual reconstruction, an upsampling module based on pixel-shuffle o
 
 \subsection{Loss Function}
 
-The network is optimized using a combined $L_{1}$ and structural similarity (SSIM) loss:
+The network is optimized using a combined $L_{1}$, structural similarity (SSIM), and perceptual loss:
 
 \begin{equation}
-\mathcal{L}_{SR} = \lambda_{1}\,\frac{1}{M}\sum_{i=1}^{M}\lVert\hat{I}_{i}-I_{i}\rVert_{1} + \lambda_{s}\,(1-\text{SSIM}(\hat{I}_{i},I_{i})),
+\mathcal{L}_{SR} = \lambda_{1}\,\frac{1}{M}\sum_{i=1}^{M}\lVert\hat{I}_{i}-I_{i}\rVert_{1} + \lambda_{s}\,(1-\text{SSIM}(\hat{I}_{i},I_{i})) + \lambda_{p}\,\mathcal{L}_{\text{perc}}(\hat{I}_{i},I_{i}),
 \end{equation}
 
-where $\hat{I}_{i}$ and $I_{i}$ denote the reconstructed and ground-truth images, $M$ is the number of training samples, and $\lambda_{1}=1.0$, $\lambda_{s}=0.1$ are the respective loss weights. The $L_{1}$ term encourages accurate pixel-level reconstruction while avoiding excessive smoothing, and the SSIM term additionally penalizes structural distortions in the output.
+where $\hat{I}_{i}$ and $I_{i}$ denote the reconstructed and ground-truth images, $M$ is the number of training samples, and $\lambda_{1}=1.0$, $\lambda_{s}=0.1$, $\lambda_{p}=0.01$ are the respective loss weights. $\mathcal{L}_{\text{perc}}$ denotes the perceptual loss computed as the $L_1$ distance between VGG16 feature maps extracted at the relu3\_3 layer of the predicted and ground-truth images, with ImageNet-normalized inputs and frozen VGG weights. The $L_{1}$ term encourages accurate pixel-level reconstruction while avoiding excessive smoothing, the SSIM term additionally penalizes structural distortions, and the perceptual term promotes high-frequency texture and structural consistency at the feature level.
 
 
 
@@ -211,7 +211,7 @@ For Sentinel-2 imagery, radiometric calibration and atmospheric correction provi
 
 \subsection{Training Configuration}
 
-The proposed network is implemented using the PyTorch deep learning framework. The model uses the EDSR baseline architecture with 16 residual blocks and 64 feature channels. Training is performed using the Adam optimizer with $\beta_{1}=0.9$, $\beta_{2}=0.999$, and no weight decay, consistent with the original EDSR training protocol~\cite{lim2017edsr}. The initial learning rate is set to $1 \times 10^{-4}$ and is halved when validation PSNR saturates (ReduceLROnPlateau, patience 10). Gradient clipping with a maximum $\ell_2$ norm of $1.0$ is applied to prevent gradient spikes from corrupting model weights during early training.
+The proposed network is implemented using the PyTorch deep learning framework. The model uses the EDSR baseline architecture with 16 residual blocks and 64 feature channels. Training is performed using the Adam optimizer with $\beta_{1}=0.9$, $\beta_{2}=0.999$, and no weight decay, consistent with the original EDSR training protocol~\cite{lim2017edsr}. The initial learning rate is set to $1 \times 10^{-4}$, preceded by a 5-epoch linear warmup from $1 \times 10^{-6}$ to stabilize early gradient flow, and is subsequently halved when validation PSNR saturates (ReduceLROnPlateau, patience 10). Gradient clipping with a maximum $\ell_2$ norm of $0.5$ is applied to prevent gradient spikes from corrupting model weights during training.
 
 The network is trained for up to 100 epochs with a batch size of 16, using early stopping (patience 20 epochs) to avoid overfitting. Full $64 \times 64$ LR images are used as training inputs without random patch cropping, as the dataset provides sufficient diversity across 31,500 images. Single-image and dual-image EDSR models are trained separately under the same optimization schedule for fair comparison. All experiments are conducted on a workstation equipped with an NVIDIA GPU.
 

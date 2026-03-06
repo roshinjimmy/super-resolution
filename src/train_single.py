@@ -189,8 +189,9 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
     criterion = CombinedLoss(
         l1_weight=train_cfg.get('l1_weight', 1.0),
         ssim_weight=train_cfg.get('ssim_weight', 0.1),
-        use_ssim=train_cfg.get('use_ssim', True)
-    )
+        use_ssim=train_cfg.get('use_ssim', True),
+        perceptual_weight=train_cfg.get('perceptual_weight', 0.0)
+    ).to(device)
     optimizer = optim.Adam(model.parameters(),
                            lr=train_cfg['learning_rate'],
                            betas=(0.9, 0.999),
@@ -208,12 +209,13 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
     es_patience = es_cfg.get('patience', 20)
     es_delta    = es_cfg.get('min_delta', 0.001)
 
-    # AMP + gradient clipping
-    use_amp   = train_cfg.get('amp', False)
-    scaler    = (
-        torch.amp.GradScaler('cuda')
-        if (use_amp and device.type == 'cuda') else None
-    )
+    # Warmup LR
+    warmup_cfg   = train_cfg.get('warmup', {})
+    warmup_epochs    = warmup_cfg.get('epochs', 0)
+    warmup_start_lr  = warmup_cfg.get('start_lr', 1e-6)
+    base_lr          = train_cfg['learning_rate']
+
+    # Gradient clipping
     grad_clip = train_cfg.get('grad_clip', 0.0)
 
     # Checkpointing / logging
@@ -242,8 +244,6 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
             optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         if 'scheduler_state_dict' in ckpt:
             scheduler.load_state_dict(ckpt['scheduler_state_dict'])
-        if scaler and 'scaler_state_dict' in ckpt:
-            scaler.load_state_dict(ckpt['scaler_state_dict'])
         start_epoch      = ckpt.get('epoch', 0) + 1
         best_psnr        = ckpt.get('best_psnr', 0.0)
         best_ssim        = ckpt.get('best_ssim', 0.0)
@@ -264,32 +264,32 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
         total_loss = 0.0
         total_train_psnr = 0.0
         total_train_ssim = 0.0
+        valid_batches = 0
         for lr_img, hr_img in tqdm(train_loader, desc=f'Epoch {epoch+1}'):
             lr_img, hr_img = lr_img.to(device), hr_img.to(device)
             optimizer.zero_grad(set_to_none=True)
-            with torch.amp.autocast('cuda', enabled=scaler is not None):
-                sr = model(lr_img)
-                loss = criterion(sr, hr_img)
-            if scaler:
-                scaler.scale(loss).backward()
-                if grad_clip > 0:
-                    scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                loss.backward()
-                if grad_clip > 0:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-                optimizer.step()
+            sr = model(lr_img)
+            loss = criterion(sr, hr_img)
+            if not torch.isfinite(loss):
+                continue  # skip NaN/Inf batch
+            loss.backward()
+            if grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            optimizer.step()
             total_loss += loss.item()
+            valid_batches += 1
             with torch.no_grad():
                 sr_c = sr.clamp(0, 1)
                 for i in range(sr_c.size(0)):
                     total_train_psnr += calculate_psnr(sr_c[i], hr_img[i])
                     total_train_ssim += calculate_ssim(sr_c[i], hr_img[i])
-        n_train_samples = len(train_ds)
-        train_loss = total_loss / len(train_loader)
+        if valid_batches == 0:
+            print(f'\n  NaN loss detected — stopping training early.')
+            print(f'  Best checkpoint is at epoch {best_psnr_epoch} ({best_psnr:.4f} dB).')
+            break
+
+        n_train_samples = valid_batches * train_loader.batch_size
+        train_loss = total_loss / valid_batches
         train_psnr = total_train_psnr / n_train_samples
         train_ssim = total_train_ssim / n_train_samples
 
@@ -309,7 +309,13 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
         val_psnr  /= n_val_samples
         val_ssim  /= n_val_samples
 
-        scheduler.step(val_psnr)
+        # LR warmup (linear ramp) or ReduceLROnPlateau
+        if epoch < warmup_epochs:
+            warmup_lr = warmup_start_lr + (base_lr - warmup_start_lr) * (epoch + 1) / warmup_epochs
+            for pg in optimizer.param_groups:
+                pg['lr'] = warmup_lr
+        else:
+            scheduler.step(val_psnr)
 
         # Best tracking
         is_best_psnr = val_psnr > best_psnr + es_delta
@@ -329,8 +335,6 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
                 'best_ssim_epoch': best_ssim_epoch,
                 'epochs_no_improve': epochs_no_improve,
             }
-            if scaler:
-                ckpt['scaler_state_dict'] = scaler.state_dict()
             torch.save(ckpt, ckpt_dir / 'single_edsr_best.pth')
             print(f'  New best model saved! PSNR: {best_psnr:.2f} dB')
         else:
@@ -351,8 +355,6 @@ def train_single_edsr(config: dict, use_hf: bool, dataset_dir: str, device: torc
             'best_ssim_epoch': best_ssim_epoch,
             'epochs_no_improve': epochs_no_improve,
         }
-        if scaler:
-            resume_ckpt['scaler_state_dict'] = scaler.state_dict()
         torch.save(resume_ckpt, ckpt_dir / 'single_edsr_resume.pth')
 
         # CSV row
