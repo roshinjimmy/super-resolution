@@ -2,7 +2,6 @@
 \IEEEoverridecommandlockouts
 
 \usepackage{graphicx}
-\graphicspath{{figures/}}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{xcolor}
 \usepackage{booktabs}
@@ -44,7 +43,7 @@ nikhilm.mec@gmail.com}
 \IEEEauthorblockA{\textit{Department of Computer Science}\\
 \textit{Model Engineering College}\\
 Kochi, India\\
-sreekumar@email.com}
+sl@mec.ac.in}
 }
 
 
@@ -191,7 +190,7 @@ The dataset is randomly divided into training, validation, and testing subsets w
 
 To evaluate the real-world applicability of the proposed method under reference-free conditions, Sentinel-2 Level-2A imagery is utilized. RGB bands with a spatial resolution of 10 meters are selected for evaluation. Multiple observations of the same geographic region acquired at different time instances are used to construct dual-input pairs.
 
-Since ground-truth high-resolution images are unavailable for Sentinel-2 data, evaluation is restricted to qualitative analysis and no-reference perceptual quality metrics.
+Since ground-truth high-resolution images are unavailable for Sentinel-2 data, evaluation is restricted to no-reference perceptual quality metrics.
 
 \subsection{Preprocessing}
 
@@ -274,7 +273,7 @@ Proposed Dual-Image Method & 11.92 & \textbf{$-$23.07} \\
 \end{tabular}
 \end{table}
 
-The proposed method achieves a substantially lower BRISQUE score ($-$23.07 vs.\ 66.40), indicating significantly reduced perceptual distortion in the SR output. The NIQE score of the proposed method (11.92) is higher than that of bicubic interpolation (9.24). This behaviour is consistent with findings reported in the super-resolution literature: NIQE is calibrated on natural photographic images and penalises the enhanced high-frequency structures produced by SR networks as deviations from its natural-image prior, even when those structures correspond to genuine scene detail~\cite{lim2017edsr}. The BRISQUE metric, which assesses image quality through locally normalised luminance coefficients without relying on a fixed natural-image corpus, more reliably reflects the reduction in blur and blocking artefacts achieved by the proposed method on satellite imagery.
+The proposed method achieves a substantially lower BRISQUE score ($-$23.07 vs.\ 66.40), indicating significantly reduced perceptual distortion in the SR output. The NIQE score of the proposed method (11.92) is higher than that of bicubic interpolation (9.24). This behaviour is consistent with findings reported in the super-resolution literature: NIQE is calibrated on natural photographic images and penalises the enhanced high-frequency structures produced by SR networks as deviations from its natural-image prior, even when those structures correspond to genuine scene detail~\cite{mittal2013niqe}. The BRISQUE metric, which assesses image quality through locally normalised luminance coefficients without relying on a fixed natural-image corpus, more reliably reflects the reduction in blur and blocking artefacts achieved by the proposed method on satellite imagery.
 
 
 
