@@ -130,6 +130,13 @@ The proposed network is based on a modified Enhanced Deep Super-Resolution Netwo
 
 Each input branch begins with a $3 \times 3$ convolution layer that maps the input image to a high-dimensional feature space. The two feature streams are then merged through a feature fusion module, enabling the network to exploit complementary information from both observations. The fused representation is processed by multiple residual blocks without batch normalization, following the design principles of EDSR, to preserve spatial fidelity and stabilize training.
 
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.98\textwidth]{architecture.png}
+\caption{Overview of the proposed dual-image super-resolution framework. Two low-resolution inputs (LR1 and LR2) are independently encoded by parallel shallow convolutional branches. The resulting feature maps are fused via channel-wise concatenation and a $1\times1$ convolution, then refined through a shared EDSR residual body and upsampled by PixelShuffle to produce the super-resolved output.}
+\label{fig:architecture}
+\end{figure*}
+
 \subsection{Dual Low-Resolution Input Generation}
 
 For each high-resolution reference image, two complementary low-resolution inputs are generated as follows:
