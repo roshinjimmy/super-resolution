@@ -1,11 +1,13 @@
 \documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
 
 \usepackage{graphicx}
 \graphicspath{{figures/}}
-\usepackage{amsmath}
-\usepackage{amssymb}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{multirow}
+\usepackage{textcomp}
 \usepackage{cite}
 \usepackage{stfloats}
 \usepackage{balance}
@@ -15,44 +17,34 @@
 
 \author{
 \IEEEauthorblockN{Roshin Jimmy}
-\IEEEauthorblockA{
-Department of Computer Science\\
-Model Engineering College\\
+\IEEEauthorblockA{\textit{Department of Computer Science}\\
+\textit{Model Engineering College}\\
 Kochi, India\\
-roshinjimmy.mec@gmail.com
-}
+roshinjimmy.mec@gmail.com}
 \and
 \IEEEauthorblockN{Rohit Anish}
-\IEEEauthorblockA{
-Department of Computer Science\\
-Model Engineering College\\
+\IEEEauthorblockA{\textit{Department of Computer Science}\\
+\textit{Model Engineering College}\\
 Kochi, India\\
-rohitanish.mec@gmail.com
-}
+rohitanish.mec@gmail.com}
 \and
 \IEEEauthorblockN{Nandu Prakash}
-\IEEEauthorblockA{
-Department of Computer Science\\
-Model Engineering College\\
+\IEEEauthorblockA{\textit{Department of Computer Science}\\
+\textit{Model Engineering College}\\
 Kochi, India\\
-nanduprakash.mec@gmail.com
-}
+nanduprakash.mec@gmail.com}
 \and
 \IEEEauthorblockN{Nikhil M}
-\IEEEauthorblockA{
-Department of Computer Science\\
-Model Engineering College\\
+\IEEEauthorblockA{\textit{Department of Computer Science}\\
+\textit{Model Engineering College}\\
 Kochi, India\\
-nikhilm.mec@gmail.com
-}
+nikhilm.mec@gmail.com}
 \and
 \IEEEauthorblockN{Sreekumar K}
-\IEEEauthorblockA{
-Department of Computer Science\\
-Model Engineering College\\
+\IEEEauthorblockA{\textit{Department of Computer Science}\\
+\textit{Model Engineering College}\\
 Kochi, India\\
-sreekumar@email.com
-}
+sreekumar@email.com}
 }
 
 
@@ -63,7 +55,7 @@ sreekumar@email.com
 % ======================
 \begin{abstract}
 % 150--200 words
-Remote sensing image super-resolution is essential for enhancing spatial details in Earth observation data, yet its practical deployment is limited by the scarcity of high-resolution ground truth. This paper proposes a dual-image super-resolution framework based on a modified Enhanced Deep Super-Resolution Network (EDSR) that exploits complementary information from two low-resolution observations of the same scene. The proposed method employs a bicubic-centric dual input strategy, where one input is obtained via bicubic downsampling and the second via Gaussian-blur followed by bicubic downsampling, reflecting realistic sensor variation in satellite imagery. A channel-fusion architecture concatenates shallow features from both inputs and passes the fused representation through a shared residual body for reconstruction. Experiments on the NWPU-RESISC45 remote sensing dataset with a 70:15:15 train/val/test split demonstrate consistent improvement over single-image EDSR baselines, with PSNR increasing from 27.00~dB to 27.75~dB (+0.74~dB) and SSIM from 0.744 to 0.780 (+0.037). Blind evaluation on real Sentinel-2 imagery further supports the practical applicability of the proposed framework.
+Remote sensing image super-resolution is essential for enhancing spatial details in Earth observation data, yet its practical deployment is limited by the scarcity of high-resolution ground truth. This paper proposes a dual-image super-resolution framework based on a modified Enhanced Deep Super-Resolution Network (EDSR) that exploits complementary information from two low-resolution observations of the same scene. The proposed method employs a bicubic-centric dual input strategy, where one input is obtained via bicubic downsampling and the second via Gaussian-blur followed by bicubic downsampling, reflecting realistic sensor variation in satellite imagery. A channel-fusion architecture concatenates shallow features from both inputs and passes the fused representation through a shared residual body for reconstruction. Experiments on the NWPU-RESISC45 remote sensing dataset with a 70:15:15 train/val/test split demonstrate consistent improvement over single-image EDSR baselines, with PSNR increasing from 27.73~dB to 29.05~dB (+1.32~dB) and SSIM from 0.773 to 0.821 (+0.049). Blind evaluation on real Sentinel-2 imagery further supports the practical applicability of the proposed framework.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -241,13 +233,13 @@ Table~\ref{tab:nwpu_results} summarizes the quantitative performance of the prim
 Method & PSNR (dB) & SSIM \\
 \midrule
 Bicubic & 26.28 & 0.6906 \\
-Single-Image EDSR (Bicubic Input) & 27.00 & 0.7437 \\
-Dual-Image EDSR (Bicubic+Gaussian, Channel Fusion) & \textbf{27.75} & \textbf{0.7803} \\
+Single-Image EDSR (Bicubic Input) & 27.73 & 0.7726 \\
+Dual-Image EDSR (Bicubic+Gaussian, Channel Fusion) & \textbf{29.05} & \textbf{0.8213} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-As shown in Table~\ref{tab:nwpu_results}, the proposed dual-image EDSR with bicubic-centric inputs outperforms the single-image baseline in PSNR and SSIM, demonstrating that fusing complementary observations consistently improves reconstruction fidelity over a single degraded input. The dual-image model achieves a gain of $+0.74$~dB PSNR and $+0.037$ SSIM over Single-Image EDSR, and a gain of $+1.47$~dB PSNR and $+0.090$ SSIM over bicubic interpolation.
+As shown in Table~\ref{tab:nwpu_results}, the proposed dual-image EDSR with bicubic-centric inputs outperforms the single-image baseline in PSNR and SSIM, demonstrating that fusing complementary observations consistently improves reconstruction fidelity over a single degraded input. The dual-image model achieves a gain of $+1.32$~dB PSNR and $+0.049$ SSIM over Single-Image EDSR, and a gain of $+2.77$~dB PSNR and $+0.131$ SSIM over bicubic interpolation.
 
 \subsection{Qualitative Results on NWPU-RESISC45}
 
@@ -293,7 +285,7 @@ It is noted that, due to the absence of reference images, the visual results are
 % ======================
 \section{Discussion}
 
-The experimental results demonstrate that the proposed dual-image super-resolution framework consistently improves reconstruction quality over single-image baselines under both supervised and reference-free settings. The proposed method achieves a PSNR gain of $+0.74$~dB and a SSIM gain of $+0.037$ over the single-image baseline on NWPU-RESISC45, demonstrating that fusing complementary bicubic-centric observations enhances reconstruction fidelity. Furthermore, the blind evaluation results on Sentinel-2 imagery suggest that channel-fusion reconstruction provides stronger visual fidelity and generalization under practical satellite imaging conditions.
+The experimental results demonstrate that the proposed dual-image super-resolution framework consistently improves reconstruction quality over single-image baselines under both supervised and reference-free settings. The proposed method achieves a PSNR gain of $+1.32$~dB and a SSIM gain of $+0.049$ over the single-image baseline on NWPU-RESISC45, demonstrating that fusing complementary bicubic-centric observations enhances reconstruction fidelity. Furthermore, the blind evaluation results on Sentinel-2 imagery suggest that channel-fusion reconstruction provides stronger visual fidelity and generalization under practical satellite imaging conditions.
 
 Despite these encouraging results, several limitations should be noted. First, the supervised training process relies on synthetic degradation models that may not fully capture the complex physical characteristics of real satellite sensors, and a domain gap between simulated and real-world data remains. Second, the performance of the proposed method is sensitive to spatial alignment between the two input images. Misregistration or temporal scene changes may introduce inconsistencies that adversely affect reconstruction quality. Third, the absence of ground-truth high-resolution imagery for Sentinel-2 data restricts the scope of quantitative evaluation and necessitates reliance on blind perceptual metrics and qualitative analysis.
 
@@ -305,7 +297,7 @@ In addition, the current framework assumes moderate temporal stability between d
 
 This paper presented a dual-image super-resolution framework for remote sensing imagery based on a modified EDSR architecture. By employing parallel feature extraction and feature fusion strategies, the proposed method effectively integrates complementary information from multiple low-resolution observations. A degradation-aware training strategy and a comprehensive evaluation protocol were introduced to facilitate both supervised validation and reference-free real-world assessment.
 
-Experimental results on the NWPU-RESISC45 dataset demonstrated a PSNR of 27.75~dB and SSIM of 0.780 for the proposed dual-image method, compared to 27.00~dB PSNR and 0.744 SSIM for the single-image EDSR baseline, representing gains of $+0.74$~dB and $+0.037$ respectively. These findings suggest that the proposed approach provides a practical and reliable solution for enhancing spatial resolution in remote sensing applications where high-resolution ground truth is unavailable.
+Experimental results on the NWPU-RESISC45 dataset demonstrated a PSNR of 29.05~dB and SSIM of 0.821 for the proposed dual-image method, compared to 27.73~dB PSNR and 0.773 SSIM for the single-image EDSR baseline, representing gains of $+1.32$~dB and $+0.049$ respectively. These findings suggest that the proposed approach provides a practical and reliable solution for enhancing spatial resolution in remote sensing applications where high-resolution ground truth is unavailable.
 
 Future work will focus on incorporating explicit image alignment and temporal consistency modeling to improve robustness under challenging conditions. Additionally, extending the framework to support multi-spectral and hyperspectral imagery and exploring self-supervised or weakly supervised training strategies represent promising directions for further research.
 
