@@ -12,14 +12,14 @@
 \usepackage{balance}
 
 
-\title{Dual-Image Super-Resolution of Remote Sensing Imagery Using a Modified EDSR Framework}
+\title{Dual-Image Super-Resolution for Remote Sensing Imagery Using a Modified EDSR Framework}
 
 \author{
 \IEEEauthorblockN{Roshin Jimmy}
 \IEEEauthorblockA{\textit{Department of Computer Science}\\
 \textit{Model Engineering College}\\
 Kochi, India\\
-roshinjimmy.mec@gmail.com}
+roshinjimmy14@gmail.com}
 \and
 \IEEEauthorblockN{Rohit Anish}
 \IEEEauthorblockA{\textit{Department of Computer Science}\\
@@ -54,7 +54,7 @@ sree@mec.ac.in}
 % ======================
 \begin{abstract}
 % 150--200 words
-The lack of high-resolution ground truth limits the practical application of remote sensing image super-resolution, which is crucial for improving spatial details in Earth observation data. In order to take advantage of complementary information from two low-resolution observations of the same scene, this paper suggests a dual-image super-resolution framework based on a modified Enhanced Deep Super-Resolution Network (EDSR). In order to capture realistic sensor variation in satellite imagery, the suggested method uses a bicubic-centric dual input strategy, where one input is obtained via bicubic downsampling and the second via Gaussian-blur followed by bicubic downsampling. Shallow features from both inputs are concatenated in a channel-fusion architecture, which then reconstructs the fused representation using a shared residual body.Experiments on the NWPU-RESISC45 remote sensing dataset with a 70:15:15 train,validation,test split demonstrate consistent improvement over single-image EDSR baselines, with PSNR increasing from 27.73~dB to 29.05~dB (+1.32~dB) and SSIM from 0.773 to 0.821 (+0.049). The suggested framework's practical applicability is further confirmed by blind evaluation on actual Sentinel-2 imagery.
+Remote sensing image super-resolution is essential for enhancing spatial detail in Earth observation data, yet its practical deployment is constrained by the scarcity of high-resolution ground truth. This paper proposes a dual-image super-resolution framework based on a modified Enhanced Deep Super-Resolution Network (EDSR) that exploits complementary information from two low-resolution observations of the same scene. The proposed method employs a bicubic-centric dual-input strategy, where one input is obtained via bicubic downsampling and the second via Gaussian blur followed by bicubic downsampling, reflecting realistic sensor variation in satellite imagery. A channel-fusion architecture concatenates shallow features from both inputs and passes the fused representation through a shared residual body for reconstruction. Experiments on the NWPU-RESISC45 remote sensing dataset with a 70:15:15 train/validation/test split demonstrate consistent improvement over single-image EDSR baselines, with PSNR increasing from 27.73~dB to 29.05~dB (+1.32~dB) and SSIM from 0.773 to 0.821 (+0.049). Blind evaluation on real Sentinel-2 imagery further confirms the practical applicability of the proposed framework.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -232,15 +232,15 @@ Table~\ref{tab:nwpu_results} summarizes the quantitative performance of the prim
 
 \begin{table}[t]
 \centering
-\caption{Quantitative Results on NWPU-RESISC45 Dataset ($\times4$)}
+\caption{Quantitative Results on NWPU-RESISC45 Dataset}
 \label{tab:nwpu_results}
 \begin{tabular}{lcc}
 \toprule
 Method & PSNR (dB) & SSIM \\
 \midrule
 Bicubic & 26.28 & 0.6906 \\
-Single-Image EDSR (Bicubic Input) & 27.73 & 0.7726 \\
-Dual-Image EDSR (Bicubic+Gaussian, Channel Fusion) & \textbf{29.05} & \textbf{0.8213} \\
+Single-Image EDSR & 27.73 & 0.7726 \\
+Proposed Dual-Image EDSR & \textbf{29.05} & \textbf{0.8213} \\
 \bottomrule
 \end{tabular}
 \end{table}
