@@ -20,6 +20,7 @@ checkpoints/
 
 # Dataset (large files)
 dataset/
+sentinel2/
 downloads/
 *.zip
 
