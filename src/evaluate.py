@@ -256,7 +256,8 @@ def evaluate_blind(
     lr1_dir: str,
     lr2_dir: str,
     device: torch.device,
-    output_dir: Path
+    output_dir: Path,
+    single_model: 'SingleEDSR' = None
 ) -> dict:
     """
     Blind evaluation (no ground truth).
@@ -271,9 +272,13 @@ def evaluate_blind(
     brisque_list = []
     niqe_bic_list = []
     brisque_bic_list = []
+    niqe_single_list = []
+    brisque_single_list = []
     
     output_dir = Path(output_dir)
     (output_dir / 'sr').mkdir(parents=True, exist_ok=True)
+    if single_model is not None:
+        (output_dir / 'sr_single').mkdir(parents=True, exist_ok=True)
     
     with torch.no_grad():
         for idx in tqdm(range(len(dataset)), desc='Blind Evaluation'):
@@ -309,6 +314,20 @@ def evaluate_blind(
             if not np.isnan(brisque_bic):
                 brisque_bic_list.append(brisque_bic)
             
+            # SingleEDSR (optional)
+            if single_model is not None:
+                sr_single = single_model(lr1)
+                sr_single = torch.clamp(sr_single, 0, 1)
+                niqe_s = calculate_niqe(sr_single[0].cpu())
+                brisque_s = calculate_brisque(sr_single[0].cpu())
+                if not np.isnan(niqe_s):
+                    niqe_single_list.append(niqe_s)
+                if not np.isnan(brisque_s):
+                    brisque_single_list.append(brisque_s)
+                sr_single_np = sr_single[0].cpu().numpy().transpose(1, 2, 0)
+                sr_single_np = (sr_single_np * 255).astype(np.uint8)
+                Image.fromarray(sr_single_np).save(output_dir / 'sr_single' / img_name)
+            
             # Save SR result
             sr_np = sr[0].cpu().numpy().transpose(1, 2, 0)
             sr_np = (sr_np * 255).astype(np.uint8)
@@ -324,6 +343,11 @@ def evaluate_blind(
             'brisque': np.mean(brisque_bic_list) if brisque_bic_list else float('nan')
         }
     }
+    if single_model is not None:
+        results['single_edsr'] = {
+            'niqe': np.mean(niqe_single_list) if niqe_single_list else float('nan'),
+            'brisque': np.mean(brisque_single_list) if brisque_single_list else float('nan')
+        }
     
     return results
 
@@ -380,17 +404,19 @@ def main():
     if args.blind:
         # Blind evaluation
         assert args.lr1_dir and args.lr2_dir, "Must provide lr1_dir and lr2_dir for blind evaluation"
-        results = evaluate_blind(model, args.lr1_dir, args.lr2_dir, device, output_dir)
+        results = evaluate_blind(model, args.lr1_dir, args.lr2_dir, device, output_dir,
+                                  single_model=single_model)
         
         print('\n' + '=' * 50)
         print('Blind Evaluation Results (lower is better)')
         print('=' * 50)
-        print(f"\nDual-EDSR:")
-        print(f"  NIQE: {results['dual_edsr']['niqe']:.4f}")
-        print(f"  BRISQUE: {results['dual_edsr']['brisque']:.4f}")
-        print(f"\nBicubic Baseline:")
-        print(f"  NIQE: {results['bicubic']['niqe']:.4f}")
-        print(f"  BRISQUE: {results['bicubic']['brisque']:.4f}")
+        print(f"{'Method':<35} {'NIQE':>8} {'BRISQUE':>10}")
+        print('-' * 55)
+        print(f"{'Bicubic':<35} {results['bicubic']['niqe']:>8.4f} {results['bicubic']['brisque']:>10.4f}")
+        if 'single_edsr' in results:
+            print(f"{'Single-EDSR':<35} {results['single_edsr']['niqe']:>8.4f} {results['single_edsr']['brisque']:>10.4f}")
+        print(f"{'Dual-EDSR':<35} {results['dual_edsr']['niqe']:>8.4f} {results['dual_edsr']['brisque']:>10.4f}")
+        print('=' * 55)
     else:
         # Standard evaluation with ground truth
         use_hf = config['data'].get('use_hf', True)

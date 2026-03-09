@@ -37,7 +37,7 @@ nanduprakash.mec@gmail.com}
 \IEEEauthorblockA{\textit{Department of Computer Science}\\
 \textit{Model Engineering College}\\
 Kochi, India\\
-nikhilm.mec@gmail.com}
+nikhilmecheril.mec@gmail.com}
 \and
 \IEEEauthorblockN{Sreekumar K}
 \IEEEauthorblockA{\textit{Department of Computer Science}\\
@@ -83,41 +83,17 @@ In this work, we introduce a dual-image super-resolution framework tailored for 
 % ======================
 \section{Related Work}
 
-This section reviews relevant literature on image super-resolution, with a focus on deep learning-based methods, generative adversarial approaches, and multi-image super-resolution techniques in remote sensing.
-
 \subsection{Single-Image Super-Resolution}
 
-Single-image super-resolution (SISR) has been thoroughly investigated within the fields of computer vision and remote sensing. Initial methods that relied on learning employed sparse coding and example-based regression to create high-resolution images from low-resolution sources. With the rise of deep learning, convolutional neural networks (CNNs) have emerged as the leading approach for SISR.
-
-Dong \textit{et al.} introduced SRCNN~\cite{dong2014srcnn}, which demonstrated the effectiveness of end-to-end CNN-based super-resolution. Subsequent works, including VDSR~\cite{kim2016vdsr} and DRCN~\cite{kim2016drcn}, employed deeper architectures to improve reconstruction accuracy. Lim \textit{et al.} proposed the Enhanced Deep Super-Resolution Network (EDSR)~\cite{lim2017edsr}, which removed batch normalization layers and introduced residual scaling, leading to significant performance gains.
-
-Several SISR methods have been applied to remote sensing imagery, achieving promising results under supervised settings. However, these approaches rely solely on a single observation and often struggle to recover fine spatial details under severe degradation. Moreover, their dependence on large-scale high-resolution ground truth data limits their applicability in real-world satellite scenarios.
-
-Representative remote-sensing SISR variants include improved multi-scale residual learning, residual-dense attention, and context-aware lightweight designs \cite{huan2021msrn, yu2022rdhan, peng2023context}. These methods improve single-observation reconstruction quality but still inherit the information bottleneck of one input frame.
+Single-image super-resolution (SISR) has been extensively studied in computer vision and remote sensing. Dong \textit{et al.} introduced SRCNN~\cite{dong2014srcnn}, establishing end-to-end CNN-based SR, followed by VDSR~\cite{kim2016vdsr} and DRCN~\cite{kim2016drcn} with deeper architectures. Lim \textit{et al.} proposed EDSR~\cite{lim2017edsr}, removing batch normalization and introducing residual scaling for substantial performance gains. Representative remote-sensing SISR variants include multi-scale residual learning, residual-dense attention, and context-aware designs~\cite{huan2021msrn, yu2022rdhan, peng2023context}. Despite strong supervised performance, these methods rely on a single observation and large-scale high-resolution ground truth, limiting applicability in real-world satellite scenarios.
 
 \subsection{GAN-Based Super-Resolution}
 
-Generative adversarial networks (GANs) have been widely adopted for perceptual super-resolution due to their ability to generate visually appealing textures. Ledig \textit{et al.} proposed SRGAN~\cite{ledig2017srgan}, which introduced adversarial and perceptual losses to enhance visual realism. ESRGAN~\cite{wang2018esrgan} further improved reconstruction quality through refined network architectures and loss functions.
+SRGAN~\cite{ledig2017srgan} and ESRGAN~\cite{wang2018esrgan} demonstrated the capability of adversarial training to generate perceptually realistic SR outputs. However, GAN-based methods tend to hallucinate fine details that do not correspond to actual scene features, which is problematic in fidelity-critical remote sensing tasks such as mapping and surveillance. The dual-image GAN of Greza \textit{et al.}~\cite{greza2024gan} demonstrates the potential of multi-observation SR for satellite imagery; the proposed method provides a deterministic alternative that prioritizes reconstruction fidelity.
 
-GAN-based methods have also been explored in remote sensing applications to enhance visual sharpness. While these approaches produce visually attractive results, they tend to introduce hallucinated details that may not correspond to actual ground features. In critical applications such as mapping and surveillance, such artifacts can lead to misleading interpretations. Consequently, deterministic reconstruction methods remain preferable for fidelity-oriented remote sensing tasks.
+\subsection{Multi-Image Super-Resolution}
 
-In particular, the dual-image GAN framework of Greza \textit{et al.} demonstrates the potential of multi-observation SR for satellite imagery \cite{greza2024gan}. Our work is positioned as a deterministic dual-image alternative that prioritizes fidelity and stable deployment behavior.
-
-\subsection{Multi-Image and Multi-Observation Super-Resolution}
-
-Multi-image super-resolution (MISR) utilizes the complementary data from several low-resolution images to improve the quality of reconstruction. Initial MISR techniques depended on explicit motion estimation and image alignment before the reconstruction process. More contemporary approaches that use deep learning combine alignment and fusion in cohesive network architectures.
-
-Several studies have investigated multi-frame and multi-view super-resolution in video and remote sensing contexts. These methods demonstrate that fusing multiple observations can improve robustness to noise and degradation. However, many existing approaches assume precise alignment and access to high-resolution ground truth, which are often unavailable in satellite imaging scenarios.
-
-In the context of remote sensing, multi-temporal imagery provides natural opportunities for multi-observation fusion. Recent works have explored temporal and multi-sensor fusion for resolution enhancement, yet practical reference-free frameworks remain limited. Unlike current techniques, the suggested method centers on fusing two images within a framework for deterministic reconstruction and highlights its usefulness in situations where references are not available.
-
-Recent MISR and degradation-aware methods in remote sensing include transformer-based feature fusion, blind dual-regression SR, and multi-degradation kernel-correction frameworks \cite{zhang2022trmisr, lei2022idrn, liu2024multideg}. Self-supervised and unsupervised alternatives have also been investigated for realistic satellite conditions where paired HR references are scarce \cite{nguyen2023l1bsr, wang2025unsupervised, sun2025variational}.
-
-\subsection{Positioning of the Proposed Method}
-
-According to the review, many current super-resolution techniques either depend on single-image input, focus on enhancing perceptual quality through adversarial methods, or need strong supervision along with alignment assumptions. In contrast, the suggested approach incorporates dual-image fusion with a modified EDSR backbone and utilizes degradation-aware training to mimic varying sensing conditions. Additionally, a specific reference-free evaluation protocol is implemented to measure real-world effectiveness on satellite imagery. 
-
-By combining supervised learning with effective multi-observation fusion and thorough evaluation, the proposed framework overcomes significant shortcomings of previous approaches and offers a dependable solution for remote sensing super-resolution in realistic deployment situations.
+Multi-image super-resolution (MISR) leverages complementary information from multiple low-resolution observations to improve reconstruction quality. Deep learning approaches integrate alignment and fusion into unified architectures, improving robustness to noise and degradation. In remote sensing, multi-temporal imagery enables natural multi-observation fusion, yet many methods require precise alignment and paired high-resolution ground truth unavailable in satellite scenarios. Recent advances include transformer-based feature fusion, blind dual-regression SR, and multi-degradation correction frameworks~\cite{zhang2022trmisr, lei2022idrn, liu2024multideg}, with self-supervised alternatives explored for reference-scarce conditions~\cite{nguyen2023l1bsr, wang2025unsupervised, sun2025variational}. The proposed method addresses these limitations by focusing on dual-image fusion within a deterministic EDSR framework paired with a reference-free evaluation protocol for real-world applicability.
 
 % ======================
 \section{Proposed Method}
@@ -274,18 +250,19 @@ Table~\ref{tab:sentinel_results} reports the NIQE and BRISQUE scores obtained fo
 \toprule
 Method & NIQE $\downarrow$ & BRISQUE $\downarrow$ \\
 \midrule
-Bicubic & 9.24 & 66.40 \\
-Proposed Dual-Image Method & 11.92 & \textbf{$-$23.07} \\
+Bicubic & 9.41 & 70.25 \\
+Single-Image EDSR & 10.21 & 65.65 \\
+Proposed Dual-Image EDSR & 11.54 & \textbf{39.02} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The proposed method achieves a substantially lower BRISQUE score ($-$23.07 vs.\ 66.40), indicating significantly reduced perceptual distortion in the SR output. The negative BRISQUE value arises from SVR extrapolation beyond its training range: when the image statistics deviate strongly from the distorted natural images used during model fitting, the regressor can produce sub-zero predictions. This is a known behaviour of BRISQUE under out-of-distribution inputs; the relative improvement over bicubic interpolation remains meaningful. The NIQE score of the proposed method (11.92) is higher than that of bicubic interpolation (9.24). This behaviour is consistent with findings reported in the super-resolution literature: NIQE is calibrated on natural photographic images and penalises the enhanced high-frequency structures produced by SR networks as deviations from its natural-image prior, even when those structures correspond to genuine scene detail~\cite{mittal2013niqe}. The BRISQUE metric, which evaluates image quality through locally normalized luminance coefficients without depending on a fixed natural-image dataset, more accurately reflects the decrease in blur and blocking artifacts achieved by the proposed method on satellite images.
+The proposed method achieves a substantially lower BRISQUE score (39.02) compared to Single-Image EDSR (65.65) and bicubic interpolation (70.25), indicating significantly reduced perceptual distortion in the SR output. This represents a reduction of 44.5\% over bicubic and 40.5\% over Single-Image EDSR. The NIQE scores follow a consistent ascending trend across methods (9.41 $\rightarrow$ 10.21 $\rightarrow$ 11.54), which is consistent with findings reported in the super-resolution literature: NIQE is calibrated on natural photographic images and penalises the enhanced high-frequency structures produced by SR networks as deviations from its natural-image prior, even when those structures correspond to genuine scene detail~\cite{mittal2013niqe}. The BRISQUE metric, which evaluates image quality through locally normalized luminance coefficients without depending on a fixed natural-image dataset, more accurately reflects the decrease in blur and blocking artifacts achieved by the proposed method on satellite images.
 
 % ======================
 \section{Discussion}
 
-The experimental findings indicate that the suggested dual-image super-resolution framework consistently enhances reconstruction quality compared to single-image baselines in both supervised and reference-free contexts. The proposed approach results in a PSNR improvement of $+1.32$~dB and an SSIM increase of $+0.049$ over the single-image baseline on NWPU-RESISC45, showing that merging complementary bicubic-centric observations boosts reconstruction accuracy. Additionally, the blind assessment of Sentinel-2 imagery yields a BRISQUE score of $-$23.07 for the proposed method, whereas bicubic interpolation scores 66.40, highlighting a significant reduction in perceptual distortion under actual satellite imaging conditions. The increased NIQE score of the super-resolution output indicates a common sensitivity of NIQE to enhanced high-frequency details instead of a decline in image quality.
+The experimental findings indicate that the suggested dual-image super-resolution framework consistently enhances reconstruction quality compared to single-image baselines in both supervised and reference-free contexts. The proposed approach results in a PSNR improvement of $+1.32$~dB and an SSIM increase of $+0.049$ over the single-image baseline on NWPU-RESISC45, showing that merging complementary bicubic-centric observations boosts reconstruction accuracy. Additionally, the blind assessment of Sentinel-2 imagery yields a BRISQUE score of 39.02 for the proposed method, compared to 65.65 for Single-Image EDSR and 70.25 for bicubic interpolation, highlighting a significant reduction in perceptual distortion under actual satellite imaging conditions. The ascending NIQE trend across methods (9.41 $\rightarrow$ 10.21 $\rightarrow$ 11.54) reflects the common sensitivity of NIQE to enhanced high-frequency details rather than a decline in image quality.
 
 Despite these encouraging results, several limitations should be noted. First, the supervised training process relies on synthetic degradation models that may not fully capture the complex physical characteristics of real satellite sensors, and a domain gap between simulated and real-world data remains. Second, the performance of the proposed method is sensitive to spatial alignment between the two input images. Misregistration or temporal scene changes may introduce inconsistencies that adversely affect reconstruction quality. Lastly, the lack of high-resolution ground-truth imagery for Sentinel-2 data limits the extent of quantitative assessment and requires dependence on blind perceptual metrics.
 
