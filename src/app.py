@@ -347,15 +347,33 @@ with tab_blind:
         "**NIQE** and **BRISQUE** (lower = better)."
     )
 
-    dual_ckpt_path_blind = Path(dual_ckpt_input)
+    dual_ckpt_path_blind   = Path(dual_ckpt_input)
+    single_ckpt_path_blind = Path(single_ckpt_input)
+
+    include_single = st.checkbox(
+        "Include Single-EDSR (LR1 only)",
+        value=False,
+        help="Optional: adds Single-EDSR to the blind comparison.",
+    )
+
+    if include_single and not single_ckpt_path_blind.exists():
+        st.warning(f"Single-EDSR checkpoint not found: `{single_ckpt_path_blind}`")
     if not dual_ckpt_path_blind.exists():
         st.warning(f"Dual-EDSR checkpoint not found: `{dual_ckpt_path_blind}`")
 
     b1, b2 = st.columns(2)
     with b1:
-        up_lr1 = st.file_uploader("Upload LR1 (first acquisition)", type=["png","jpg","jpeg","tif","tiff"], key="blind_lr1")
+        up_lr1 = st.file_uploader(
+            "Upload LR1 (first acquisition)",
+            type=["png", "jpg", "jpeg", "tif", "tiff"],
+            key="blind_lr1",
+        )
     with b2:
-        up_lr2 = st.file_uploader("Upload LR2 (second acquisition)", type=["png","jpg","jpeg","tif","tiff"], key="blind_lr2")
+        up_lr2 = st.file_uploader(
+            "Upload LR2 (second acquisition)",
+            type=["png", "jpg", "jpeg", "tif", "tiff"],
+            key="blind_lr2",
+        )
 
     if up_lr1 is None or up_lr2 is None:
         st.info("👆 Upload both LR images to start.")
@@ -364,7 +382,7 @@ with tab_blind:
         lr2_blind = Image.open(io.BytesIO(up_lr2.read())).convert("RGB")
 
         # Ensure same size — crop to minimum common size
-        w = min(lr1_blind.width,  lr2_blind.width)
+        w = min(lr1_blind.width, lr2_blind.width)
         h = min(lr1_blind.height, lr2_blind.height)
         lr1_blind = lr1_blind.crop((0, 0, w, h))
         lr2_blind = lr2_blind.crop((0, 0, w, h))
@@ -376,36 +394,74 @@ with tab_blind:
         with ci2:
             st.image(lr2_blind, caption=f"LR2 — {up_lr2.name}", use_container_width=True)
 
+        for key in ("blind_result", "blind_prev_pair"):
+            if key not in st.session_state:
+                st.session_state[key] = None
+
+        curr_pair = (up_lr1.name, up_lr2.name)
+        if st.session_state["blind_prev_pair"] != curr_pair:
+            st.session_state["blind_result"] = None
+            st.session_state["blind_prev_pair"] = curr_pair
+
         st.markdown("---")
 
-        if st.button("▶ Run Blind Evaluation", disabled=not dual_ckpt_path_blind.exists(),
-                     use_container_width=True, key="btn_blind"):
-            with st.spinner("Running Dual-EDSR and computing blind metrics…"):
-                model_blind = load_dual_model(str(dual_ckpt_path_blind), config, device_str)
-                bic_blind   = bicubic_up(lr1_blind, scale=scale)
-                sr_blind    = run_dual(model_blind, lr1_blind, lr2_blind, device_str)
+        can_run_single = include_single and single_ckpt_path_blind.exists()
+        can_run_dual   = dual_ckpt_path_blind.exists()
 
-                lr1_t  = pil_to_tensor(lr1_blind)
-                sr_t   = pil_to_tensor(sr_blind)
-                bic_t  = pil_to_tensor(bic_blind)
+        if st.button(
+            "▶ Run Blind Evaluation",
+            disabled=not (can_run_single or can_run_dual),
+            use_container_width=True,
+            key="btn_blind",
+        ):
+            with st.spinner("Running models and computing blind metrics…"):
+                bic_blind = bicubic_up(lr1_blind, scale=scale)
 
-                niqe_sr  = calculate_niqe(sr_t[0].cpu())
-                brisq_sr = calculate_brisque(sr_t[0].cpu())
-                niqe_bic  = calculate_niqe(bic_t[0].cpu())
-                brisq_bic = calculate_brisque(bic_t[0].cpu())
+                bic_t = pil_to_tensor(bic_blind)
+                niqe_bic = float(calculate_niqe(bic_t[0].cpu()))
+                brisq_bic = float(calculate_brisque(bic_t[0].cpu()))
 
-                st.session_state["blind_result"] = {
-                    "sr": sr_blind, "bic": bic_blind,
-                    "niqe_sr": niqe_sr, "brisq_sr": brisq_sr,
-                    "niqe_bic": niqe_bic, "brisq_bic": brisq_bic,
+                res: dict = {
+                    "bic": bic_blind,
+                    "niqe_bic": niqe_bic,
+                    "brisq_bic": brisq_bic,
                 }
 
-        if "blind_result" in st.session_state and st.session_state["blind_result"]:
+                if can_run_single:
+                    model_single_blind = load_single_model(str(single_ckpt_path_blind), config, device_str)
+                    single_sr = run_single(model_single_blind, lr1_blind, device_str)
+                    single_t = pil_to_tensor(single_sr)
+                    res.update({
+                        "single_sr": single_sr,
+                        "niqe_single": float(calculate_niqe(single_t[0].cpu())),
+                        "brisq_single": float(calculate_brisque(single_t[0].cpu())),
+                    })
+
+                if can_run_dual:
+                    model_dual_blind = load_dual_model(str(dual_ckpt_path_blind), config, device_str)
+                    dual_sr = run_dual(model_dual_blind, lr1_blind, lr2_blind, device_str)
+                    dual_t = pil_to_tensor(dual_sr)
+                    res.update({
+                        "dual_sr": dual_sr,
+                        "niqe_dual": float(calculate_niqe(dual_t[0].cpu())),
+                        "brisq_dual": float(calculate_brisque(dual_t[0].cpu())),
+                    })
+
+                st.session_state["blind_result"] = res
+
+        if st.session_state.get("blind_result"):
             res = st.session_state["blind_result"]
 
+            have_single = include_single and "single_sr" in res
+            have_dual   = "dual_sr" in res
+
             st.subheader("Results")
-            rc1, rc2 = st.columns(2)
-            with rc1:
+
+            num_cols = 1 + int(have_single) + int(have_dual)
+            cols = st.columns(num_cols)
+            col_i = 0
+
+            with cols[col_i]:
                 st.image(res["bic"], caption="Bicubic upscale of LR1", use_container_width=True)
                 st.markdown(
                     f"""<div style="background:#1e1e2e;border-radius:8px;padding:10px 16px;margin-top:4px">
@@ -413,39 +469,95 @@ with tab_blind:
                     <span style="color:#a6e3a1">NIQE <b>{res['niqe_bic']:.3f}</b></span>
                     &nbsp;&nbsp;
                     <span style="color:#89dceb">BRISQUE <b>{res['brisq_bic']:.3f}</b></span>
-                    </div>""", unsafe_allow_html=True
+                    </div>""",
+                    unsafe_allow_html=True,
                 )
-            with rc2:
-                st.image(res["sr"], caption="Dual-EDSR (LR1 + LR2)", use_container_width=True)
-                dn = res['niqe_bic'] - res['niqe_sr']
-                db = res['brisq_bic'] - res['brisq_sr']
+            col_i += 1
+
+            if have_single:
+                dn = res["niqe_bic"] - res["niqe_single"]
+                db = res["brisq_bic"] - res["brisq_single"]
                 color_n = "#a6e3a1" if dn >= 0 else "#f38ba8"
                 color_b = "#a6e3a1" if db >= 0 else "#f38ba8"
-                st.markdown(
-                    f"""<div style="background:#1e1e2e;border-radius:8px;padding:10px 16px;margin-top:4px">
-                    <b>Dual-EDSR</b><br/>
-                    <span style="color:#a6e3a1">NIQE <b>{res['niqe_sr']:.3f}</b></span>
-                    &nbsp; <span style="color:{color_n};font-size:0.85em">(Δ{dn:+.3f} vs bicubic)</span><br/>
-                    <span style="color:#89dceb">BRISQUE <b>{res['brisq_sr']:.3f}</b></span>
-                    &nbsp; <span style="color:{color_b};font-size:0.85em">(Δ{db:+.3f} vs bicubic)</span>
-                    </div>""", unsafe_allow_html=True
-                )
+                with cols[col_i]:
+                    st.image(res["single_sr"], caption="Single-EDSR (LR1 only)", use_container_width=True)
+                    st.markdown(
+                        f"""<div style="background:#1e1e2e;border-radius:8px;padding:10px 16px;margin-top:4px">
+                        <b>Single-EDSR</b><br/>
+                        <span style="color:#a6e3a1">NIQE <b>{res['niqe_single']:.3f}</b></span>
+                        &nbsp; <span style="color:{color_n};font-size:0.85em">(Δ{dn:+.3f} vs bicubic)</span><br/>
+                        <span style="color:#89dceb">BRISQUE <b>{res['brisq_single']:.3f}</b></span>
+                        &nbsp; <span style="color:{color_b};font-size:0.85em">(Δ{db:+.3f} vs bicubic)</span>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
+                col_i += 1
+
+            if have_dual:
+                dn = res["niqe_bic"] - res["niqe_dual"]
+                db = res["brisq_bic"] - res["brisq_dual"]
+                color_n = "#a6e3a1" if dn >= 0 else "#f38ba8"
+                color_b = "#a6e3a1" if db >= 0 else "#f38ba8"
+                with cols[col_i]:
+                    st.image(res["dual_sr"], caption="Dual-EDSR (LR1 + LR2)", use_container_width=True)
+                    st.markdown(
+                        f"""<div style="background:#1e1e2e;border-radius:8px;padding:10px 16px;margin-top:4px">
+                        <b>Dual-EDSR</b><br/>
+                        <span style="color:#a6e3a1">NIQE <b>{res['niqe_dual']:.3f}</b></span>
+                        &nbsp; <span style="color:{color_n};font-size:0.85em">(Δ{dn:+.3f} vs bicubic)</span><br/>
+                        <span style="color:#89dceb">BRISQUE <b>{res['brisq_dual']:.3f}</b></span>
+                        &nbsp; <span style="color:{color_b};font-size:0.85em">(Δ{db:+.3f} vs bicubic)</span>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
 
             import pandas as pd
+            methods = ["Bicubic"]
+            niqe_vals = [f"{res['niqe_bic']:.3f}"]
+            brisq_vals = [f"{res['brisq_bic']:.3f}"]
+
+            if have_single:
+                methods.append("Single-EDSR")
+                niqe_vals.append(f"{res['niqe_single']:.3f}")
+                brisq_vals.append(f"{res['brisq_single']:.3f}")
+
+            if have_dual:
+                methods.append("Dual-EDSR (Ours)")
+                niqe_vals.append(f"{res['niqe_dual']:.3f}")
+                brisq_vals.append(f"{res['brisq_dual']:.3f}")
+
             df_blind = pd.DataFrame({
-                "Method":  ["Bicubic", "Dual-EDSR (Ours)"],
-                "NIQE ↓":  [f"{res['niqe_bic']:.3f}",  f"{res['niqe_sr']:.3f}"],
-                "BRISQUE ↓": [f"{res['brisq_bic']:.3f}", f"{res['brisq_sr']:.3f}"],
+                "Method": methods,
+                "NIQE ↓": niqe_vals,
+                "BRISQUE ↓": brisq_vals,
             })
+
             st.markdown("---")
             st.subheader("📊 Blind Metrics Summary")
             st.dataframe(df_blind, hide_index=True, use_container_width=True)
             st.caption("Lower NIQE and BRISQUE indicate better perceptual quality.")
 
             st.subheader("⬇️ Download Output")
-            dl1, dl2 = st.columns(2)
-            with dl1:
-                st.download_button("Bicubic SR",   pil_to_bytes(res["bic"]), "blind_bicubic_sr.png",   "image/png")
-            with dl2:
-                st.download_button("Dual-EDSR SR", pil_to_bytes(res["sr"]),  "blind_dual_edsr_sr.png", "image/png")
+            dl_cols = st.columns(len(methods))
+            dl_i = 0
+            with dl_cols[dl_i]:
+                st.download_button("Bicubic SR", pil_to_bytes(res["bic"]), "blind_bicubic_sr.png", "image/png")
+            dl_i += 1
+            if have_single:
+                with dl_cols[dl_i]:
+                    st.download_button(
+                        "Single-EDSR SR",
+                        pil_to_bytes(res["single_sr"]),
+                        "blind_single_edsr_sr.png",
+                        "image/png",
+                    )
+                dl_i += 1
+            if have_dual:
+                with dl_cols[dl_i]:
+                    st.download_button(
+                        "Dual-EDSR SR",
+                        pil_to_bytes(res["dual_sr"]),
+                        "blind_dual_edsr_sr.png",
+                        "image/png",
+                    )
 
