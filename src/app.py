@@ -16,6 +16,7 @@ Workflow:
 
 import sys
 import io
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -132,18 +133,26 @@ def compute_metrics(sr: Image.Image, hr: Image.Image) -> tuple:
 
 
 def metric_html(label: str, psnr: float, ssim: float, delta_p: float | None = None) -> None:
-    delta_str = ""
+    delta_html = ""
     if delta_p is not None:
         color = "#a6e3a1" if delta_p >= 0 else "#f38ba8"
-        sign  = "+" if delta_p >= 0 else ""
-        delta_str = f'&nbsp; <span style="color:{color};font-size:0.85em">({sign}{delta_p:.2f} dB vs bicubic)</span>'
+        sign = "+" if delta_p >= 0 else ""
+        delta_html = (
+            f'<span class="sr-delta" style="color:{color}">'
+            f'({sign}{delta_p:.2f} dB vs bicubic)'
+            f"</span>"
+        )
+
     st.markdown(
-        f"""<div style="background:#1e1e2e;border-radius:8px;padding:10px 16px;margin-top:4px">
-        <b>{label}</b>{delta_str}<br/>
-        <span style="color:#a6e3a1">PSNR <b>{psnr:.2f} dB</b></span>
-        &nbsp;&nbsp;
-        <span style="color:#89dceb">SSIM <b>{ssim:.4f}</b></span>
-        </div>""",
+        f"""
+        <div class="sr-card">
+          <div class="sr-card-title">{label} {delta_html}</div>
+          <div class="sr-row">
+            <div class="sr-kpi"><span class="sr-kpi-label">PSNR</span><b>{psnr:.2f} dB</b></div>
+            <div class="sr-kpi"><span class="sr-kpi-label">SSIM</span><b>{ssim:.4f}</b></div>
+          </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -154,18 +163,173 @@ def pil_to_bytes(img: Image.Image) -> bytes:
     return buf.getvalue()
 
 
+def pixel_fingerprint(img: Image.Image) -> str:
+    arr = np.asarray(img.convert("RGB"), dtype=np.uint8)
+    h = hashlib.sha1(arr.tobytes()).hexdigest()[:12]
+    return f"{img.width}×{img.height} | {h}"
+
+
 # ── page setup ───────────────────────────────────────────────────────────────
 
+def inject_css() -> None:
+    st.markdown(
+        """
+        <style>
+          [data-testid="block-container"] {
+            max-width: 1200px;
+            padding-top: 2.2rem;
+            padding-bottom: 2.5rem;
+          }
+          [data-testid="stSidebarContent"] {
+            padding-top: 1.5rem;
+          }
+          [data-testid="stButton"] button {
+            border-radius: 10px;
+            padding: 0.65rem 1rem;
+          }
+
+          /* Button theming (override Streamlit theme accent) */
+          :root {
+            /* Neutral primary: visually matches surrounding controls */
+            --sr-primary-bg: rgba(255, 255, 255, 0.04);
+            --sr-primary-bg-hover: rgba(255, 255, 255, 0.07);
+            --sr-primary-border: rgba(120, 120, 120, 0.30);
+            --sr-primary-border-hover: rgba(170, 170, 170, 0.45);
+
+            --sr-secondary-bg: rgba(255, 255, 255, 0.04);
+            --sr-secondary-bg-hover: rgba(255, 255, 255, 0.06);
+            --sr-secondary-border: rgba(120, 120, 120, 0.30);
+          }
+
+          /* Primary buttons (Streamlit DOM varies across versions, so match multiple selectors) */
+          div[data-testid="stBaseButton-primary"] button,
+          div[data-testid="baseButton-primary"] button,
+          .stButton > button[kind="primary"],
+          button[kind="primary"] {
+            background: var(--sr-primary-bg) !important;
+            border: 1px solid var(--sr-primary-border) !important;
+            color: rgba(255, 255, 255, 0.92) !important;
+            box-shadow: none !important;
+            background-image: none !important;
+          }
+          div[data-testid="stBaseButton-primary"] button:hover,
+          div[data-testid="baseButton-primary"] button:hover,
+          .stButton > button[kind="primary"]:hover,
+          button[kind="primary"]:hover {
+            background: var(--sr-primary-bg-hover) !important;
+            border-color: var(--sr-primary-border-hover) !important;
+          }
+
+          /* Secondary buttons */
+          div[data-testid="stBaseButton-secondary"] button,
+          div[data-testid="baseButton-secondary"] button,
+          .stButton > button[kind="secondary"],
+          button[kind="secondary"] {
+            background: var(--sr-secondary-bg) !important;
+            border: 1px solid var(--sr-secondary-border) !important;
+            color: rgba(255, 255, 255, 0.90) !important;
+            box-shadow: none !important;
+            background-image: none !important;
+          }
+          div[data-testid="stBaseButton-secondary"] button:hover,
+          div[data-testid="baseButton-secondary"] button:hover,
+          .stButton > button[kind="secondary"]:hover,
+          button[kind="secondary"]:hover {
+            background: var(--sr-secondary-bg-hover) !important;
+          }
+
+          div[data-testid="stBaseButton-primary"] button:disabled,
+          div[data-testid="baseButton-primary"] button:disabled,
+          div[data-testid="stBaseButton-secondary"] button:disabled,
+          div[data-testid="baseButton-secondary"] button:disabled,
+          button[kind="primary"]:disabled,
+          button[kind="secondary"]:disabled {
+            opacity: 0.55;
+          }
+
+          img {
+            border-radius: 12px;
+          }
+
+          .sr-hero {
+            border-radius: 16px;
+            padding: 14px 18px;
+            margin-bottom: 1.25rem;
+            border: 1px solid rgba(120, 120, 120, 0.25);
+            background: rgba(255, 255, 255, 0.03);
+          }
+          .sr-hero-title {
+            font-size: 2.1rem;
+            font-weight: 750;
+            letter-spacing: -0.02em;
+            line-height: 1.15;
+          }
+          .sr-hero-subtitle {
+            margin-top: 6px;
+            opacity: 0.80;
+            font-size: 0.98rem;
+          }
+
+          .sr-pill {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(120, 120, 120, 0.25);
+            background: rgba(255, 255, 255, 0.03);
+            font-size: 0.92rem;
+          }
+
+          .sr-card {
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-top: 6px;
+            border: 1px solid rgba(120, 120, 120, 0.25);
+            background: rgba(255, 255, 255, 0.03);
+          }
+          .sr-card-title {
+            font-weight: 650;
+            margin-bottom: 6px;
+          }
+          .sr-row {
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+          }
+          .sr-kpi {
+            font-variant-numeric: tabular-nums;
+          }
+          .sr-kpi-label {
+            opacity: 0.7;
+            margin-right: 8px;
+          }
+          .sr-delta {
+            font-size: 0.85em;
+            margin-left: 8px;
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 st.set_page_config(
-    page_title="Dual-SR Evaluation",
-    page_icon="🛰️",
+    page_title="Super-Resolution Evaluation",
+    page_icon="SR",
     layout="wide",
 )
 
-st.title("🛰️ Dual-Image Super-Resolution — Evaluation Demo")
-st.caption(
-    "Upload a high-resolution image. The app synthesises LR1 (bicubic ÷4) and "
-    "LR2 (Gaussian blur + bicubic ÷4), then runs Single-EDSR and Dual-EDSR for comparison."
+inject_css()
+
+st.markdown(
+    """
+    <div class="sr-hero">
+      <div class="sr-hero-title">Dual-Image Super-Resolution</div>
+      <div class="sr-hero-subtitle">
+        Full-reference mode reports PSNR/SSIM against a provided ground truth. Blind mode reports NIQE/BRISQUE (lower is better).
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 config      = load_config()
@@ -175,27 +339,36 @@ device_str  = "cuda" if torch.cuda.is_available() else "cpu"
 
 # ── sidebar ─────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("⚙️ Settings")
+    st.header("Settings")
 
     st.subheader("Checkpoints")
     dual_ckpt_input   = st.text_input("Dual-EDSR checkpoint",   value=str(DEFAULT_DUAL_CKPT))
     single_ckpt_input = st.text_input("Single-EDSR checkpoint", value=str(DEFAULT_SINGLE_CKPT))
 
     st.subheader("Degradation")
-    blur_sigma = st.slider("LR2 Gaussian σ", 0.5, 5.0, float(blur_sigma), 0.1,
-                           help="Must match the sigma used during training (default 1.5)")
+    blur_sigma = st.slider(
+        "LR2 Gaussian σ",
+        0.5,
+        5.0,
+        float(blur_sigma),
+        0.1,
+        help="Must match the sigma used during training (default 1.5)",
+    )
 
     st.subheader("Device")
-    st.info(f"**{device_str.upper()}**")
+    st.markdown(
+        f"<div class='sr-pill'>Device: <b>{device_str.upper()}</b></div>",
+        unsafe_allow_html=True,
+    )
 
-    st.markdown("---")
+    st.divider()
     st.caption(
         "Checkpoint files default to `src/checkpoints/`.  \n"
         "Run `train.py` and `train_single.py` first to generate them."
     )
 
 # ── tabs ─────────────────────────────────────────────────────────────────────
-tab_eval, tab_blind = st.tabs(["📐 Full-Reference Evaluation", "🔍 Blind Evaluation (Sentinel-2)"])
+tab_eval, tab_blind = st.tabs(["Full-Reference", "Blind (Sentinel-2)"])
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — Full-Reference Evaluation
@@ -215,7 +388,7 @@ with tab_eval:
     )
 
     if uploaded is None:
-        st.info("👆 Upload an HR image to start.")
+        st.info("Upload a high-resolution image to start.")
     else:
         hr_pil = Image.open(io.BytesIO(uploaded.read())).convert("RGB")
         w, h   = hr_pil.size
@@ -224,8 +397,8 @@ with tab_eval:
         hr_pil = hr_pil.crop((0, 0, w_crop, h_crop))
 
         st.success(
-            f"Loaded **{uploaded.name}** — {w_crop}×{h_crop} px  →  "
-            f"LR size: {w_crop//scale}×{h_crop//scale} px  (×{scale})"
+            f"Loaded {uploaded.name} — {w_crop}×{h_crop} px → "
+            f"LR size: {w_crop//scale}×{h_crop//scale} px (×{scale})"
         )
 
         lr1_pil, lr2_pil = synthesise_lr_pair(hr_pil, scale=scale, blur_sigma=blur_sigma)
@@ -240,7 +413,20 @@ with tab_eval:
             st.image(lr2_pil, caption=f"LR2 — Gaussian(σ={blur_sigma:.1f}) + bicubic ÷{scale}",
                      use_container_width=True)
 
-        st.markdown("---")
+        with st.expander("Exports / diagnostics", expanded=False):
+            st.caption("Use these exported LR files to reproduce the exact same inputs in the Blind tab.")
+            ex1, ex2, ex3 = st.columns(3)
+            with ex1:
+                st.download_button("Download HR (cropped)", pil_to_bytes(hr_pil), "input_hr.png", "image/png")
+                st.caption(f"HR: {pixel_fingerprint(hr_pil)}")
+            with ex2:
+                st.download_button("Download LR1", pil_to_bytes(lr1_pil), "input_lr1.png", "image/png")
+                st.caption(f"LR1: {pixel_fingerprint(lr1_pil)}")
+            with ex3:
+                st.download_button("Download LR2", pil_to_bytes(lr2_pil), "input_lr2.png", "image/png")
+                st.caption(f"LR2: {pixel_fingerprint(lr2_pil)}")
+
+        st.divider()
 
         dual_ckpt_path   = Path(dual_ckpt_input)
         single_ckpt_path = Path(single_ckpt_input)
@@ -252,11 +438,20 @@ with tab_eval:
 
         bc1, bc2 = st.columns(2)
         with bc1:
-            run_single_flag = st.button("▶ Run Single-EDSR", disabled=not single_ckpt_path.exists(),
-                                        use_container_width=True, key="btn_single")
+            run_single_flag = st.button(
+                "Run Single-EDSR",
+                disabled=not single_ckpt_path.exists(),
+                use_container_width=True,
+                key="btn_single",
+            )
         with bc2:
-            run_dual_flag = st.button("▶ Run Dual-EDSR", disabled=not dual_ckpt_path.exists(),
-                                      use_container_width=True, key="btn_dual")
+            run_dual_flag = st.button(
+                "Run Dual-EDSR",
+                type="primary",
+                disabled=not dual_ckpt_path.exists(),
+                use_container_width=True,
+                key="btn_dual",
+            )
 
         for key in ("single_result", "dual_result", "prev_upload"):
             if key not in st.session_state:
@@ -321,11 +516,11 @@ with tab_eval:
                 "ΔSSIM":     ["—", f"{s_sgl-ssim_bic:+.4f}", f"{s_dual-ssim_bic:+.4f}"],
             })
 
-            st.markdown("---")
-            st.subheader("📊 Comparison Summary")
+            st.divider()
+            st.subheader("Comparison Summary")
             st.dataframe(df, hide_index=True, use_container_width=True)
 
-            st.subheader("⬇️ Download Outputs")
+            st.subheader("Download Outputs")
             dc1, dc2, dc3 = st.columns(3)
             with dc1:
                 st.download_button("Bicubic SR",     pil_to_bytes(bic_pil), "bicubic_sr.png",     "image/png")
@@ -350,11 +545,12 @@ with tab_blind:
     dual_ckpt_path_blind   = Path(dual_ckpt_input)
     single_ckpt_path_blind = Path(single_ckpt_input)
 
-    include_single = st.checkbox(
-        "Include Single-EDSR (LR1 only)",
-        value=False,
-        help="Optional: adds Single-EDSR to the blind comparison.",
-    )
+    with st.expander("Advanced options", expanded=False):
+        include_single = st.checkbox(
+            "Include Single-EDSR (LR1 only)",
+            value=False,
+            help="Optional: adds Single-EDSR to the blind comparison.",
+        )
 
     if include_single and not single_ckpt_path_blind.exists():
         st.warning(f"Single-EDSR checkpoint not found: `{single_ckpt_path_blind}`")
@@ -376,7 +572,7 @@ with tab_blind:
         )
 
     if up_lr1 is None or up_lr2 is None:
-        st.info("👆 Upload both LR images to start.")
+        st.info("Upload both LR images to start.")
     else:
         lr1_blind = Image.open(io.BytesIO(up_lr1.read())).convert("RGB")
         lr2_blind = Image.open(io.BytesIO(up_lr2.read())).convert("RGB")
@@ -394,6 +590,16 @@ with tab_blind:
         with ci2:
             st.image(lr2_blind, caption=f"LR2 — {up_lr2.name}", use_container_width=True)
 
+        n1 = up_lr1.name.lower()
+        n2 = up_lr2.name.lower()
+        if any(tok in n1 or tok in n2 for tok in ("_sr", "bicubic_sr", "single_edsr", "dual_edsr")):
+            st.warning("These filenames look like SR outputs. Blind mode expects true LR inputs; SR files will be upscaled again.")
+
+        with st.expander("Diagnostics", expanded=False):
+            st.caption(f"LR1: {pixel_fingerprint(lr1_blind)}")
+            st.caption(f"LR2: {pixel_fingerprint(lr2_blind)}")
+            st.caption(f"Expected SR output size: {lr1_blind.width * scale}×{lr1_blind.height * scale}")
+
         for key in ("blind_result", "blind_prev_pair"):
             if key not in st.session_state:
                 st.session_state[key] = None
@@ -403,13 +609,14 @@ with tab_blind:
             st.session_state["blind_result"] = None
             st.session_state["blind_prev_pair"] = curr_pair
 
-        st.markdown("---")
+        st.divider()
 
         can_run_single = include_single and single_ckpt_path_blind.exists()
         can_run_dual   = dual_ckpt_path_blind.exists()
 
         if st.button(
-            "▶ Run Blind Evaluation",
+            "Run blind evaluation",
+            type="primary",
             disabled=not (can_run_single or can_run_dual),
             use_container_width=True,
             key="btn_blind",
@@ -464,12 +671,15 @@ with tab_blind:
             with cols[col_i]:
                 st.image(res["bic"], caption="Bicubic upscale of LR1", use_container_width=True)
                 st.markdown(
-                    f"""<div style="background:#1e1e2e;border-radius:8px;padding:10px 16px;margin-top:4px">
-                    <b>Bicubic baseline</b><br/>
-                    <span style="color:#a6e3a1">NIQE <b>{res['niqe_bic']:.3f}</b></span>
-                    &nbsp;&nbsp;
-                    <span style="color:#89dceb">BRISQUE <b>{res['brisq_bic']:.3f}</b></span>
-                    </div>""",
+                    f"""
+                    <div class="sr-card">
+                      <div class="sr-card-title">Bicubic baseline</div>
+                      <div class="sr-row">
+                        <div class="sr-kpi"><span class="sr-kpi-label">NIQE</span><b>{res['niqe_bic']:.3f}</b></div>
+                        <div class="sr-kpi"><span class="sr-kpi-label">BRISQUE</span><b>{res['brisq_bic']:.3f}</b></div>
+                      </div>
+                    </div>
+                    """,
                     unsafe_allow_html=True,
                 )
             col_i += 1
@@ -482,13 +692,19 @@ with tab_blind:
                 with cols[col_i]:
                     st.image(res["single_sr"], caption="Single-EDSR (LR1 only)", use_container_width=True)
                     st.markdown(
-                        f"""<div style="background:#1e1e2e;border-radius:8px;padding:10px 16px;margin-top:4px">
-                        <b>Single-EDSR</b><br/>
-                        <span style="color:#a6e3a1">NIQE <b>{res['niqe_single']:.3f}</b></span>
-                        &nbsp; <span style="color:{color_n};font-size:0.85em">(Δ{dn:+.3f} vs bicubic)</span><br/>
-                        <span style="color:#89dceb">BRISQUE <b>{res['brisq_single']:.3f}</b></span>
-                        &nbsp; <span style="color:{color_b};font-size:0.85em">(Δ{db:+.3f} vs bicubic)</span>
-                        </div>""",
+                        f"""
+                        <div class="sr-card">
+                          <div class="sr-card-title">Single-EDSR</div>
+                          <div class="sr-kpi">
+                            <span class="sr-kpi-label">NIQE</span><b>{res['niqe_single']:.3f}</b>
+                            <span class="sr-delta" style="color:{color_n}">(Δ{dn:+.3f} vs bicubic)</span>
+                          </div>
+                          <div class="sr-kpi">
+                            <span class="sr-kpi-label">BRISQUE</span><b>{res['brisq_single']:.3f}</b>
+                            <span class="sr-delta" style="color:{color_b}">(Δ{db:+.3f} vs bicubic)</span>
+                          </div>
+                        </div>
+                        """,
                         unsafe_allow_html=True,
                     )
                 col_i += 1
@@ -501,13 +717,19 @@ with tab_blind:
                 with cols[col_i]:
                     st.image(res["dual_sr"], caption="Dual-EDSR (LR1 + LR2)", use_container_width=True)
                     st.markdown(
-                        f"""<div style="background:#1e1e2e;border-radius:8px;padding:10px 16px;margin-top:4px">
-                        <b>Dual-EDSR</b><br/>
-                        <span style="color:#a6e3a1">NIQE <b>{res['niqe_dual']:.3f}</b></span>
-                        &nbsp; <span style="color:{color_n};font-size:0.85em">(Δ{dn:+.3f} vs bicubic)</span><br/>
-                        <span style="color:#89dceb">BRISQUE <b>{res['brisq_dual']:.3f}</b></span>
-                        &nbsp; <span style="color:{color_b};font-size:0.85em">(Δ{db:+.3f} vs bicubic)</span>
-                        </div>""",
+                        f"""
+                        <div class="sr-card">
+                          <div class="sr-card-title">Dual-EDSR</div>
+                          <div class="sr-kpi">
+                            <span class="sr-kpi-label">NIQE</span><b>{res['niqe_dual']:.3f}</b>
+                            <span class="sr-delta" style="color:{color_n}">(Δ{dn:+.3f} vs bicubic)</span>
+                          </div>
+                          <div class="sr-kpi">
+                            <span class="sr-kpi-label">BRISQUE</span><b>{res['brisq_dual']:.3f}</b>
+                            <span class="sr-delta" style="color:{color_b}">(Δ{db:+.3f} vs bicubic)</span>
+                          </div>
+                        </div>
+                        """,
                         unsafe_allow_html=True,
                     )
 
@@ -532,12 +754,12 @@ with tab_blind:
                 "BRISQUE ↓": brisq_vals,
             })
 
-            st.markdown("---")
-            st.subheader("📊 Blind Metrics Summary")
+            st.divider()
+            st.subheader("Blind Metrics Summary")
             st.dataframe(df_blind, hide_index=True, use_container_width=True)
             st.caption("Lower NIQE and BRISQUE indicate better perceptual quality.")
 
-            st.subheader("⬇️ Download Output")
+            st.subheader("Download Output")
             dl_cols = st.columns(len(methods))
             dl_i = 0
             with dl_cols[dl_i]:
