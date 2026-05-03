@@ -1,6 +1,19 @@
 \documentclass[conference]{IEEEtran}
 \IEEEoverridecommandlockouts
 
+\makeatletter
+\newcommand{\newlineauthors}{%
+  \end{@IEEEauthorhalign}\hfill\mbox{}\par
+  \mbox{}\hfill\begin{@IEEEauthorhalign}
+}
+\def\ps@IEEEtitlepagestyle{%
+  \def\@oddhead{}%
+  \def\@evenhead{}%
+  \def\@oddfoot{\hbox to\textwidth{\footnotesize 979-8-3315-9071-0/26/\$31.00~{\copyright}2026 IEEE\hfill}}%
+  \def\@evenfoot{}%
+}
+\makeatother
+
 \usepackage{graphicx}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{xcolor}
@@ -32,7 +45,7 @@ rohitanish.mec@gmail.com}
 \textit{Model Engineering College}\\
 Kochi, India\\
 nanduprakash.mec@gmail.com}
-\and
+\newlineauthors
 \IEEEauthorblockN{Nikhil M}
 \IEEEauthorblockA{\textit{Department of Computer Science}\\
 \textit{Model Engineering College}\\
@@ -53,7 +66,6 @@ sree@mec.ac.in}
 
 % ======================
 \begin{abstract}
-% 150--200 words
 Remote sensing image super-resolution is essential for enhancing spatial detail in Earth observation data, yet its practical deployment is constrained by the scarcity of high-resolution ground truth. This paper proposes a dual-image super-resolution framework based on a modified Enhanced Deep Super-Resolution Network (EDSR) that exploits complementary information from two low-resolution observations of the same scene. The proposed method employs a bicubic-centric dual-input strategy, where one input is obtained via bicubic downsampling and the second via Gaussian blur followed by bicubic downsampling, reflecting realistic sensor variation in satellite imagery. A channel-fusion architecture concatenates shallow features from both inputs and passes the fused representation through a shared residual body for reconstruction. Experiments on the NWPU-RESISC45 remote sensing dataset with a 70:15:15 train/validation/test split demonstrate consistent improvement over single-image EDSR baselines, with PSNR increasing from 27.73~dB to 29.05~dB (+1.32~dB) and SSIM from 0.773 to 0.821 (+0.049). Blind evaluation on real Sentinel-2 imagery further confirms the practical applicability of the proposed framework.
 \end{abstract}
 
@@ -66,11 +78,11 @@ Remote sensing image super-resolution, dual-image fusion, enhanced deep super-re
 
 Remote sensing imagery plays a crucial role in a wide range of applications, including environmental monitoring, urban planning, disaster management, and agricultural assessment. The precision and dependability of subsequent analysis tasks are directly impacted by the spatial resolution of satellite images. However, obtaining high-resolution satellite imagery is still difficult because of the physical limitations of imaging sensors, orbital restrictions, and financial concerns. Because of this, the majority of Earth observation data that are accessible to the public are recorded at comparatively low spatial resolutions, which limits their usefulness in fine-grained analysis.
 
-Super-resolution (SR) techniques aim to reconstruct high-resolution images from low-resolution images and have been extensively studied in recent years. While earlier methods relied on learning from examples and interpolation, recent advances in deep learning have resulted in significant performance improvements. Convolutional neural network (CNN)-based techniques, like Enhanced Deep Super-Resolution Networks (EDSR), have demonstrated remarkable capabilities in single-image super-resolution tasks. However, a lot of existing methods require large, high-resolution ground truth datasets for supervised training, which is frequently unfeasible in real-world remote sensing scenarios. Furthermore, methods that employ generative adversarial networks (GAN) can produce visually appealing outcomes, but they often introduce artificial textures that could jeopardize crucial geospatial information.
+Super-resolution (SR) techniques aim to reconstruct high-resolution images from low-resolution images and have been extensively studied in recent years. While earlier methods relied on learning from examples and interpolation, recent advances in deep learning have resulted in significant performance improvements~\cite{dong2014srcnn,kim2016vdsr}. Convolutional neural network (CNN)-based techniques, like Enhanced Deep Super-Resolution Networks (EDSR)~\cite{lim2017edsr}, have demonstrated remarkable capabilities in single-image super-resolution tasks. However, a lot of existing methods require large, high-resolution ground truth datasets for supervised training, which is frequently unfeasible in real-world remote sensing scenarios. Furthermore, methods that employ generative adversarial networks (GAN)~\cite{ledig2017srgan,wang2018esrgan} can produce visually appealing outcomes, but they often introduce artificial textures that could jeopardize crucial geospatial information.
 
-To address the limitations associated with single-image super-resolution, researchers have investigated multi-image and multi-observation methods to make use of complementary data from several low-resolution inputs. In the field of remote sensing, satellite systems often capture the same geographic area under different atmospheric conditions, varying light levels, and different timeframes. These multiple captures present a chance to improve reconstruction quality through effective integration of information. Nevertheless, developing practical multi-image super-resolution systems that function reliably in reference-free scenarios remains a difficult area of research.
+To address the limitations associated with single-image super-resolution, researchers have investigated multi-image and multi-observation methods~\cite{zhang2022trmisr,greza2024gan} to make use of complementary data from several low-resolution inputs. In the field of remote sensing, satellite systems often capture the same geographic area under different atmospheric conditions, varying light levels, and different timeframes. Nevertheless, developing practical multi-image super-resolution systems that function reliably in reference-free scenarios remains a difficult area of research.
 
-In this work, we introduce a dual-image super-resolution framework tailored for remote sensing images that is based on a modified Enhanced Deep Super-Resolution Network (EDSR). Our method utilizes parallel feature extraction branches to capture complementary information from two low-resolution images produced through bicubic-centric degradation, which is then followed by channel-wise feature fusion and deep residual reconstruction. We further assess the generalization ability of our proposed technique on actual Sentinel-2 images under reference-free conditions using blind perceptual quality metrics. The primary contributions of this research are outlined as follows:
+In this work, a dual-image super-resolution framework tailored for remote sensing images is proposed, based on a modified Enhanced Deep Super-Resolution Network (EDSR). The proposed method employs parallel feature extraction branches to capture complementary information from two low-resolution images produced through bicubic-centric degradation, followed by channel-wise feature fusion and deep residual reconstruction. The generalization ability of the proposed framework is further assessed on real Sentinel-2 imagery under reference-free conditions using blind perceptual quality metrics. The primary contributions of this research are outlined as follows:
 
 \begin{itemize}
 \item A dual-input super-resolution architecture based on a modified EDSR framework with channel fusion, designed for bicubic-centric dual low-resolution inputs that simulate realistic satellite sensor variation.
@@ -134,8 +146,6 @@ F_{f} = \phi([\;F_{1}, F_{2}\;]),
 
 where $[\cdot]$ denotes channel-wise concatenation and $\phi(\cdot)$ represents the $1 \times 1$ fusion convolution operator. The fused feature map $F_{f}$ serves as the input to the deep residual reconstruction module. This fusion strategy enables the network to selectively emphasize informative features from each input while suppressing noise and degradation artifacts.
 
-This channel-fusion mechanism is employed in the proposed architecture. The processing flow is: normalization of aligned LR pairs, dual-branch shallow feature extraction, channel-wise fusion via $1\times1$ convolution, modified EDSR residual reconstruction, and PixelShuffle-based $\times4$ upsampling.
-
 \subsection{Residual Reconstruction and Upsampling}
 
 The fused feature representation is refined through a stack of $N$ residual blocks, each consisting of two $3 \times 3$ convolutional layers and a skip connection. Batch normalization layers are omitted to avoid restricting feature dynamics and to improve reconstruction accuracy. Residual scaling with a factor of $0.1$ is employed to stabilize gradient flow through the deep residual stack and accelerate convergence.
@@ -146,9 +156,10 @@ Following residual reconstruction, an upsampling module based on pixel-shuffle o
 
 The network is optimized using a combined $L_{1}$, structural similarity (SSIM), and perceptual loss:
 
-\begin{equation}
-\mathcal{L}_{SR} = \lambda_{1}\,\frac{1}{M}\sum_{i=1}^{M}\lVert\hat{I}_{i}-I_{i}\rVert_{1} + \lambda_{s}\,(1-\text{SSIM}(\hat{I}_{i},I_{i})) + \lambda_{p}\,\mathcal{L}_{\text{perc}}(\hat{I}_{i},I_{i}),
-\end{equation}
+\begin{multline}
+\mathcal{L}_{SR} = \lambda_{1}\,\frac{1}{M}\sum_{i=1}^{M}\lVert\hat{I}_{i}-I_{i}\rVert_{1} \\
++ \lambda_{s}\,(1-\text{SSIM}(\hat{I}_{i},I_{i})) + \lambda_{p}\,\mathcal{L}_{\text{perc}}(\hat{I}_{i},I_{i}),
+\end{multline}
 
 where $\hat{I}_{i}$ and $I_{i}$ denote the reconstructed and ground-truth images, $M$ is the number of training samples, and $\lambda_{1}=1.0$, $\lambda_{s}=0.1$, $\lambda_{p}=0.01$ are the respective loss weights. $\mathcal{L}_{\text{perc}}$ denotes the perceptual loss computed as the $L_1$ distance between VGG16 feature maps extracted at the relu3\_3 layer of the predicted and ground-truth images, with ImageNet-normalized inputs and frozen VGG weights. The $L_{1}$ term encourages accurate pixel-level reconstruction while avoiding excessive smoothing, the SSIM term additionally penalizes structural distortions, and the perceptual term promotes high-frequency texture and structural consistency at the feature level.
 
@@ -187,7 +198,7 @@ For Sentinel-2 imagery, radiometric calibration and atmospheric correction provi
 
 The proposed network is implemented using the PyTorch deep learning framework. The model uses the EDSR baseline architecture with 16 residual blocks and 64 feature channels. Training is performed using the Adam optimizer with $\beta_{1}=0.9$, $\beta_{2}=0.999$, and no weight decay, consistent with the original EDSR training protocol~\cite{lim2017edsr}. The initial learning rate is set to $1 \times 10^{-4}$, preceded by a 5-epoch linear warmup from $1 \times 10^{-6}$ to stabilize early gradient flow, and is subsequently halved when validation PSNR saturates (ReduceLROnPlateau, patience 10). Gradient clipping with a maximum $\ell_2$ norm of $0.5$ is applied to prevent gradient spikes from corrupting model weights during training.
 
-The network is trained for up to 100 epochs with a batch size of 16, using early stopping (patience 20 epochs) to avoid overfitting. Full $64 \times 64$ LR images are used as training inputs without random patch cropping, as the dataset provides sufficient diversity across 31,500 images. Single-image and dual-image EDSR models are trained separately under the same optimization schedule for fair comparison. All experiments are conducted on a workstation equipped with an NVIDIA GPU.
+The network is trained for up to 100 epochs with a batch size of 16, using early stopping (patience 20 epochs) to avoid overfitting. Single-image and dual-image EDSR models are trained separately under the same optimization schedule for fair comparison. All experiments are conducted on a workstation equipped with an NVIDIA Quadro RTX 4000 GPU (8\,GB VRAM).
 
 \subsection{Evaluation Metrics}
 
@@ -222,6 +233,8 @@ Proposed Dual-Image EDSR & \textbf{29.05} & \textbf{0.8213} \\
 \end{table}
 
 As shown in Table~\ref{tab:nwpu_results}, the proposed dual-image EDSR with bicubic-centric inputs outperforms the single-image baseline in PSNR and SSIM, demonstrating that fusing complementary observations consistently improves reconstruction fidelity over a single degraded input. The dual-image model achieves a gain of $+1.32$~dB PSNR and $+0.049$ SSIM over Single-Image EDSR, and a gain of $+2.77$~dB PSNR and $+0.131$ SSIM over bicubic interpolation.
+
+To further assess generalizability, the framework was also evaluated on the UC Merced Land Use Dataset~\cite{yang2010ucmerced}, comprising 2,100 aerial images across 21 land-use categories at $256 \times 256$ resolution. Training for 50 epochs yielded a Dual-Image EDSR PSNR of 27.95~dB versus 26.45~dB for Single-Image EDSR ($+1.50$~dB), consistent with the gains on NWPU-RESISC45 and confirming that the dual-image fusion benefit generalizes across datasets of different scales and scene diversity.
 
 \subsection{Qualitative Results on NWPU-RESISC45}
 
@@ -279,7 +292,6 @@ Experimental results on the NWPU-RESISC45 dataset demonstrated a PSNR of 29.05~d
 Future research will emphasize the integration of direct image alignment and the modeling of temporal consistency to enhance reliability in difficult conditions. Furthermore, broadening the framework to include multi-spectral and hyperspectral images, as well as investigating self-supervised or weakly supervised training methods represent promising directions for further research.
 
 
-% ======================
 \bibliographystyle{IEEEtran}
 \bibliography{references}
 
